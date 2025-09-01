@@ -1,0 +1,554 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include "MAX30105.h"
+#include "heartRate.h"
+#include "spo2_algorithm.h"
+#include <Adafruit_MLX90614.h>
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include "addons/TokenHelper.h"
+#include "addons/RTDBHelper.h"  
+
+// Konfigurasi WiFi
+const char* ssid = "ATEKU KOPI 5G";
+const char* password = "atekudihati";
+
+// Konfigurasi Firebase
+#define API_KEY "AIzaSyC_4FizusMK9ksaWcYXBmubsp3GGxuuX0g"
+#define DATABASE_URL "https://monitoring-jantung-f8031-default-rtdb.firebaseio.com/"
+
+// Data objek Firebase
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+MAX30105 particleSensor;
+Adafruit_MLX90614 mlx = Adafruit_MLX90614();
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Konstanta pengukuran
+const int durasi_ms = 30000;
+const int kalibrasi_delay = 10000; // 10 detik untuk kalibrasi
+
+// Variabel hasil pengukuran
+float suhu_akhir = 0;
+int bpm_final = 0;
+int spo2_final = 0;
+int tekanan_darah_sys = 0; // Placeholder untuk tekanan darah sistolik
+int tekanan_darah_dia = 0; // Placeholder untuk tekanan darah diastolik
+
+// Variabel proses pengukuran
+float beatsPerMinute = 0;
+int beatAvg = 0;
+#define RATE_SIZE 6
+byte rates[RATE_SIZE];
+byte rateSpot = 0;
+unsigned long lastBeat = 0;
+
+// Buffer untuk algoritma SpO2
+#define BUFFER_SIZE 100
+uint32_t irBuffer[BUFFER_SIZE];
+uint32_t redBuffer[BUFFER_SIZE];
+int32_t spo2, heartRate;
+int8_t validSpO2, validHeartRate;
+
+// Variabel monitoring kualitas sinyal
+long lastIRValue = 0;
+int signalQuality = 0;
+int failed_readings = 0;
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(21, 22);
+  
+  // Inisialisasi LCD
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Inisialisasi...");
+
+  // Koneksi ke WiFi
+  lcd.setCursor(0, 1);
+  lcd.print("WiFi...");
+  connectToWiFi();
+
+  // Konfigurasi Firebase
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  
+  // Sign in ke Firebase (anonymous)
+  auth.token.uid = "";
+  
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+  
+  Serial.println("Firebase initialized");
+  lcd.setCursor(0, 1);
+  lcd.print("Firebase OK");
+
+  // Inisialisasi sensor MLX90614
+  if (!mlx.begin()) {
+    Serial.println("❌ Gagal deteksi MLX90614");
+    lcd.setCursor(0, 1);
+    lcd.print("MLX90614 gagal");
+    while (1);
+  } else {
+    Serial.println("✅ MLX90614 terdeteksi");
+  }
+
+  // Inisialisasi sensor MAX30102
+  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) {
+    Serial.println("❌ Gagal deteksi MAX30102");
+    lcd.setCursor(0, 1);
+    lcd.print("MAX30102 gagal");
+    while (1);
+  } else {
+    Serial.println("✅ MAX30102 terdeteksi");
+  }
+
+  // Konfigurasi MAX30102 untuk pembacaan optimal
+  byte ledBrightness = 0x1F; // Reduced from 0x3F to 0x1F for less noise
+  byte sampleAverage = 4;    // Rata-rata 4 sample
+  byte ledMode = 2;          // Red + IR mode
+  byte sampleRate = 400;     // 400 samples per second 
+  int pulseWidth = 411;      // 411μs pulse width
+  int adcRange = 4096;       // 4096 scale range
+
+  particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
+  particleSensor.setPulseAmplitudeRed(0x1F);
+  particleSensor.setPulseAmplitudeIR(0x1F);
+
+  lcd.clear();
+  lcd.print("Tunggu 10 detik");
+  lcd.setCursor(0, 1);
+  lcd.print("Untuk kalibrasi");
+  
+  // Kalibrasi awal selama 10 detik
+  delay(kalibrasi_delay);
+  
+  lcd.clear();
+  lcd.print("Pengukuran...");
+  delay(1000);
+
+  // Lakukan pengukuran
+  ukurSuhu();
+  delay(1000);
+  ukurBPM();
+  delay(1000);
+  ukurSpO2();
+  delay(1000);
+
+  // Tampilkan hasil akhir semua parameter
+  tampilHasilAkhir();
+  
+  // Kirim data ke Firebase
+  kirimDataKeFirebase();
+}
+
+void loop() {
+  // Program hanya berjalan sekali di setup
+  delay(5000); // Tunggu 5 detik sebelum mengulang
+}
+
+void connectToWiFi() {
+  WiFi.begin(ssid, password);
+  Serial.print("Menghubungkan ke WiFi");
+  int retryCount = 0;
+  while (WiFi.status() != WL_CONNECTED && retryCount < 20) {
+    delay(500);
+    Serial.print(".");
+    lcd.setCursor(6, 1);
+    lcd.print(retryCount);
+    retryCount++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi terhubung!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+    lcd.setCursor(0, 1);
+    lcd.print("WiFi OK ");
+    lcd.print(WiFi.RSSI());
+  } else {
+    Serial.println("\nGagal terhubung ke WiFi");
+    lcd.setCursor(0, 1);
+    lcd.print("WiFi Gagal");
+  }
+}
+
+void tampilLCDSingle(const char* label, const char* value, int waktu) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(label);
+  lcd.setCursor(0, 1);
+  lcd.print(value);
+  lcd.print(" T:");
+  lcd.print(waktu);
+  lcd.print("/30");
+}
+
+void tampilHasilAkhir() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("S:"); lcd.print(suhu_akhir, 1); lcd.print("C");
+  lcd.setCursor(8, 0);
+  lcd.print("B:"); lcd.print(bpm_final);
+  
+  lcd.setCursor(0, 1);
+  lcd.print("O2:"); lcd.print(spo2_final); lcd.print("%");
+  lcd.setCursor(8, 1);
+  lcd.print("SQ:"); lcd.print(signalQuality); lcd.print("%");
+
+  Serial.println("\n===== HASIL AKHIR =====");
+  Serial.print("Suhu Akhir: "); Serial.print(suhu_akhir, 1); Serial.println(" °C");
+  Serial.print("BPM Akhir : "); Serial.print(bpm_final); Serial.println(" BPM");
+  Serial.print("SpO2 Akhir: "); Serial.print(spo2_final); Serial.println(" %");
+  Serial.print("Tekanan Darah (Estimasi): "); Serial.print(tekanan_darah_sys); Serial.print("/"); Serial.print(tekanan_darah_dia); Serial.println(" mmHg");
+  Serial.print("Kualitas Sinyal: "); Serial.print(signalQuality); Serial.println(" %");
+  
+  // Berikan interpretasi hasil
+  Serial.println("\n===== INTERPRETASI HASIL =====");
+  if (suhu_akhir < 36.0) {
+    Serial.println("Suhu tubuh rendah - mungkin pengukuran lingkungan");
+  } else if (suhu_akhir >= 36.0 && suhu_akhir <= 37.5) {
+    Serial.println("Suhu tubuh normal");
+  } else {
+    Serial.println("Suhu tubuh tinggi - kemungkinan demam");
+  }
+  
+  if (bpm_final < 60) {
+    Serial.println("Detak jantung rendah (bradycardia)");
+  } else if (bpm_final >= 60 && bpm_final <= 100) {
+    Serial.println("Detak jantung normal");
+  } else {
+    Serial.println("Detak jantung tinggi (tachycardia)");
+  }
+  
+  if (spo2_final < 95) {
+    Serial.println("Tingkat oksigen darah rendah - konsultasi dokter");
+  } else if (spo2_final >= 95 && spo2_final <= 100) {
+    Serial.println("Tingkat oksigen darah normal");
+  }
+  
+  // Klasifikasi kondisi jantung sederhana (placeholder untuk Naive Bayes)
+  String kondisi = klasifikasiKondisiJantung();
+  Serial.print("Kondisi Jantung: "); Serial.println(kondisi);
+}
+
+String klasifikasiKondisiJantung() {
+  // Placeholder untuk implementasi Naive Bayes
+  // Ini adalah versi sederhana berdasarkan aturan
+  if ((suhu_akhir >= 36.0 && suhu_akhir <= 37.5) && 
+      (bpm_final >= 60 && bpm_final <= 100) && 
+      (spo2_final >= 95)) {
+    return "Normal";
+  } else if ((suhu_akhir < 36.0 || suhu_akhir > 37.5) || 
+             (bpm_final < 50 || bpm_final > 110) || 
+             (spo2_final < 90)) {
+    return "Berbahaya";
+  } else {
+    return "Kurang Normal";
+  }
+}
+
+void kirimDataKeFirebase() {
+  if (Firebase.ready()) {
+    // Buat path unik dengan timestamp
+    String path = "/data_jantung/data_" + String(millis());
+    
+    // Kirim data satu per satu menggunakan fungsi yang benar
+    if (Firebase.RTDB.setFloat(&fbdo, (path + "/timestamp").c_str(), millis())) {
+      Serial.println("Timestamp terkirim");
+    } else {
+      Serial.println("Gagal kirim timestamp: " + fbdo.errorReason());
+    }
+    
+    if (Firebase.RTDB.setFloat(&fbdo, (path + "/suhu").c_str(), suhu_akhir)) {
+      Serial.println("Suhu terkirim");
+    } else {
+      Serial.println("Gagal kirim suhu: " + fbdo.errorReason());
+    }
+    
+    if (Firebase.RTDB.setInt(&fbdo, (path + "/bpm").c_str(), bpm_final)) {
+      Serial.println("BPM terkirim");
+    } else {
+      Serial.println("Gagal kirim BPM: " + fbdo.errorReason());
+    }
+    
+    if (Firebase.RTDB.setInt(&fbdo, (path + "/spo2").c_str(), spo2_final)) {
+      Serial.println("SpO2 terkirim");
+    } else {
+      Serial.println("Gagal kirim SpO2: " + fbdo.errorReason());
+    }
+    
+    if (Firebase.RTDB.setInt(&fbdo, (path + "/tekanan_sys").c_str(), tekanan_darah_sys)) {
+      Serial.println("Tekanan sys terkirim");
+    } else {
+      Serial.println("Gagal kirim tekanan sys: " + fbdo.errorReason());
+    }
+    
+    if (Firebase.RTDB.setInt(&fbdo, (path + "/tekanan_dia").c_str(), tekanan_darah_dia)) {
+      Serial.println("Tekanan dia terkirim");
+    } else {
+      Serial.println("Gagal kirim tekanan dia: " + fbdo.errorReason());
+    }
+    
+    if (Firebase.RTDB.setString(&fbdo, (path + "/kondisi").c_str(), klasifikasiKondisiJantung().c_str())) {
+      Serial.println("Kondisi terkirim");
+    } else {
+      Serial.println("Gagal kirim kondisi: " + fbdo.errorReason());
+    }
+    
+    if (Firebase.RTDB.setInt(&fbdo, (path + "/signal_quality").c_str(), signalQuality)) {
+      Serial.println("Signal quality terkirim");
+    } else {
+      Serial.println("Gagal kirim signal quality: " + fbdo.errorReason());
+    }
+    
+    Serial.println("✅ Semua data terkirim ke Firebase!");
+    lcd.setCursor(0, 1);
+    lcd.print("Firebase OK");
+  } else {
+    Serial.println("❌ Firebase tidak siap");
+    lcd.setCursor(0, 1);
+    lcd.print("FB Gagal");
+  }
+}
+
+void ukurSuhu() {
+  float total_suhu = 0;
+  int count = 0;
+  int detik = 0;
+  unsigned long start = millis();
+
+  Serial.println("\n===== PENGUKURAN SUHU =====");
+
+  while (millis() - start < durasi_ms) {
+    float suhu = mlx.readObjectTempC();
+    
+    // Filter pembacaan yang tidak valid
+    if (!isnan(suhu) && suhu > 20.0 && suhu < 40.0) {
+      total_suhu += suhu;
+      count++;
+      suhu_akhir = suhu;
+    }
+    
+    detik = (millis() - start) / 1000;
+
+    char buffer[16];
+    snprintf(buffer, sizeof(buffer), "%.2f C", suhu_akhir);
+    tampilLCDSingle("Suhu Tubuh", buffer, detik);
+
+    Serial.print("Waktu Suhu (");
+    Serial.print(detik);
+    Serial.print("): ");
+    Serial.print(suhu_akhir);
+    Serial.println(" C");
+    
+    delay(1000);
+  }
+  
+  if (count > 0) {
+    suhu_akhir = total_suhu / count;
+  } else {
+    suhu_akhir = 0;
+    Serial.println("Peringatan: Tidak ada pembacaan suhu yang valid!");
+  }
+}
+
+void ukurBPM() {
+  int total_bpm = 0;
+  int count = 0;
+  int detik = 0;
+  failed_readings = 0;
+  
+  // Reset array rates
+  for (byte i = 0; i < RATE_SIZE; i++) rates[i] = 0;
+  rateSpot = 0;
+  
+  unsigned long start = millis();
+
+  Serial.println("\n===== PENGUKURAN DETAK JANTUNG =====");
+
+  while (millis() - start < durasi_ms) {
+    long irValue = particleSensor.getIR();
+    
+    // Periksa kualitas sinyal
+    signalQuality = map(constrain(irValue, 50000, 100000), 50000, 100000, 0, 100);
+    
+    if (signalQuality < 20) {
+      if ((millis() - start) / 1000 > detik) {
+        detik = (millis() - start) / 1000;
+        Serial.print("Waktu BPM (");
+        Serial.print(detik);
+        Serial.println("): Sinyal lemah! Periksa jari.");
+        
+        char buffer[16];
+        snprintf(buffer, sizeof(buffer), "%d BPM", bpm_final);
+        tampilLCDSingle("Detak Jantung", buffer, detik);
+      }
+      failed_readings++;
+      delay(100);
+      continue;
+    }
+    
+    if (checkForBeat(irValue)) {
+      long delta = millis() - lastBeat;
+      lastBeat = millis();
+      beatsPerMinute = 60.0 / (delta / 1000.0);
+
+      if (beatsPerMinute > 20 && beatsPerMinute < 250) {
+        rates[rateSpot++] = (byte)beatsPerMinute;
+        rateSpot %= RATE_SIZE;
+
+        int sum = 0, valid_count = 0;
+        for (byte x = 0; x < RATE_SIZE; x++) {
+          if (rates[x] > 0) { 
+            sum += rates[x]; 
+            valid_count++; 
+          }
+        }
+        
+        if (valid_count > 0) {
+          beatAvg = sum / valid_count;
+          total_bpm += beatAvg;
+          count++;
+          bpm_final = beatAvg;
+          failed_readings = 0;
+        }
+      }
+    }
+    
+    if ((millis() - start) / 1000 > detik) {
+      detik = (millis() - start) / 1000;
+      char buffer[16];
+      snprintf(buffer, sizeof(buffer), "%d BPM", bpm_final);
+      tampilLCDSingle("Detak Jantung", buffer, detik);
+      
+      Serial.print("Waktu BPM (");
+      Serial.print(detik);
+      Serial.print("): ");
+      Serial.print(bpm_final);
+      Serial.print(" BPM, Kualitas Sinyal: ");
+      Serial.print(signalQuality);
+      Serial.println("%");
+    }
+    
+    delay(20);
+  }
+  
+  if (count > 0) {
+    bpm_final = total_bpm / count;
+  } else {
+    bpm_final = 0;
+    Serial.println("Peringatan: Tidak ada pembacaan BPM yang valid!");
+  }
+}
+
+void ukurSpO2() {
+  int total_spo2 = 0;
+  int count = 0;
+  int detik = 0;
+  failed_readings = 0;
+
+  Serial.println("\n===== PENGUKURAN OKSIGEN DARAH =====");
+
+  // Isi buffer dengan data awal
+  for (int i = 0; i < BUFFER_SIZE; i++) {
+    while (!particleSensor.available()) {
+      particleSensor.check();
+      delay(1);
+    }
+    redBuffer[i] = particleSensor.getRed();
+    irBuffer[i] = particleSensor.getIR();
+    particleSensor.nextSample();
+    
+    // Tampilkan progress di serial monitor
+    if (i % 25 == 0) {
+      Serial.print("Mengisi buffer: ");
+      Serial.print(i);
+      Serial.print("/");
+      Serial.print(BUFFER_SIZE);
+      Serial.println(" data");
+    }
+  }
+
+  unsigned long start = millis();
+  while (millis() - start < durasi_ms) {
+    // Geser buffer
+    for (int i = 0; i < BUFFER_SIZE - 25; i++) {
+      redBuffer[i] = redBuffer[i + 25];
+      irBuffer[i] = irBuffer[i + 25];
+    }
+    
+    // Isi ulang bagian akhir buffer
+    for (int i = BUFFER_SIZE - 25; i < BUFFER_SIZE; i++) {
+      while (!particleSensor.available()) {
+        particleSensor.check();
+        delay(1);
+      }
+      redBuffer[i] = particleSensor.getRed();
+      irBuffer[i] = particleSensor.getIR();
+      particleSensor.nextSample();
+    }
+    
+    // Periksa kualitas sinyal sebelum menghitung SpO2
+    long currentIRValue = particleSensor.getIR();
+    signalQuality = map(constrain(currentIRValue, 50000, 100000), 50000, 100000, 0, 100);
+    
+    if (signalQuality < 20) {
+      Serial.println("Sinyal lemah! Pastikan jari terpasang dengan baik.");
+      failed_readings++;
+      continue;
+    }
+    
+    // Hitung SpO2 dan heart rate
+    maxim_heart_rate_and_oxygen_saturation(
+      irBuffer, BUFFER_SIZE, redBuffer,
+      &spo2, &validSpO2, &heartRate, &validHeartRate
+    );
+    
+    // Hanya terima pembacaan yang valid
+    if (validSpO2 == 1 && spo2 >= 70 && spo2 <= 100) {
+      total_spo2 += spo2;
+      count++;
+      spo2_final = spo2;
+      failed_readings = 0; // Reset counter gagal
+    } else {
+      failed_readings++;
+      Serial.print("Pembacaan SpO2 tidak valid. Kode: ");
+      Serial.println(validSpO2);
+    }
+    
+    // Jika terlalu banyak pembacaan gagal, berhenti
+    if (failed_readings > 50) {
+      Serial.println("Terlalu banyak pembacaan gagal. Periksa sensor.");
+      break;
+    }
+    
+    if ((millis() - start) / 1000 > detik) {
+      detik = (millis() - start) / 1000;
+      char buffer[16];
+      snprintf(buffer, sizeof(buffer), "%d %%", spo2_final);
+      tampilLCDSingle("Oksigen Darah", buffer, detik);
+      
+      Serial.print("Waktu SpO2 (");
+      Serial.print(detik);
+      Serial.print("): ");
+      Serial.print(spo2_final);
+      Serial.print("%, Kualitas Sinyal: ");
+      Serial.print(signalQuality);
+      Serial.println("%");
+    }
+    
+    delay(20);
+  }
+  
+  if (count > 0) {
+    spo2_final = total_spo2 / count;
+  } else {
+    spo2_final = 0;
+    Serial.println("Peringatan: Tidak ada pembacaan SpO2 yang valid!");
+  }
+}
