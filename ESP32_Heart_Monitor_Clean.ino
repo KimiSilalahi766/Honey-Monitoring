@@ -8,7 +8,7 @@
 #include <Firebase_ESP_Client.h>
 
 // Konfigurasi WiFi
-const char* ssid = "iPhone";
+const char* ssid = "ATEKU KOPI 1 5G";
 const char* password = "11112222";
 
 // Konfigurasi Firebase
@@ -174,43 +174,95 @@ void executeSetupSequence() {
 }
 
 bool connectWiFi() {
-  updateDisplay("Connecting WiFi", ssid);
+  updateDisplay("Connecting WiFi", "Please wait...");
+  
+  // Debugging informasi
+  Serial.println("\n=== WiFi Connection Debug ===");
+  Serial.print("SSID: ");
+  Serial.println(ssid);
+  Serial.print("Password length: ");
+  Serial.println(strlen(password));
+  Serial.println("============================");
+  
+  // Reset WiFi sebelum koneksi
+  WiFi.disconnect(true);
+  delay(1000);
+  WiFi.mode(WIFI_OFF);
+  delay(1000);
+  WiFi.mode(WIFI_STA);
+  delay(1000);
+  
   Serial.print("Connecting to WiFi: ");
   Serial.println(ssid);
   
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  
-  int retryCount = 0;
-  while (WiFi.status() != WL_CONNECTED && retryCount < MAX_WIFI_RETRY) {
-    delay(1000);
-    Serial.print(".");
-    retryCount++;
+  // Coba beberapa kali dengan cara berbeda
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    Serial.print("Attempt ");
+    Serial.print(attempt);
+    Serial.println("/3");
     
-    // Update LCD setiap 5 detik
-    if (retryCount % 5 == 0) {
-      char buffer[16];
-      snprintf(buffer, sizeof(buffer), "Try %d/%d", retryCount, MAX_WIFI_RETRY);
-      updateDisplay("Connecting WiFi", buffer);
+    WiFi.begin(ssid, password);
+    
+    int retryCount = 0;
+    while (WiFi.status() != WL_CONNECTED && retryCount < 20) {
+      delay(500);
+      Serial.print(".");
+      retryCount++;
+      
+      // Update LCD setiap 3 detik  
+      if (retryCount % 6 == 0) {
+        char buffer[16];
+        snprintf(buffer, sizeof(buffer), "Att %d Try %d", attempt, retryCount);
+        updateDisplay("Connecting WiFi", buffer);
+      }
+      
+      // Debug status WiFi
+      if (retryCount % 10 == 0) {
+        Serial.print(" [Status: ");
+        Serial.print(WiFi.status());
+        Serial.print("] ");
+      }
     }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      wifiConnected = true;
+      Serial.println("\n✅ WiFi Connected!");
+      Serial.print("IP Address: ");
+      Serial.println(WiFi.localIP());
+      Serial.print("Signal Strength: ");
+      Serial.println(WiFi.RSSI());
+      Serial.print("Gateway: ");
+      Serial.println(WiFi.gatewayIP());
+      Serial.print("Subnet: ");
+      Serial.println(WiFi.subnetMask());
+      
+      updateDisplay("WiFi Connected!", WiFi.localIP().toString());
+      delay(2000);
+      return true;
+    }
+    
+    Serial.println("\nAttempt failed, trying again...");
+    WiFi.disconnect();
+    delay(2000);
   }
   
-  if (WiFi.status() == WL_CONNECTED) {
-    wifiConnected = true;
-    Serial.println("\n✅ WiFi Connected!");
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
-    Serial.print("RSSI: ");
-    Serial.println(WiFi.RSSI());
-    
-    updateDisplay("WiFi Connected", WiFi.localIP().toString());
-    delay(2000);
-    return true;
-  } else {
-    Serial.println("\n❌ WiFi Connection Failed");
-    updateDisplay("WiFi Failed!", "Check credentials");
-    return false;
-  }
+  // Jika semua attempt gagal
+  Serial.println("\n❌ All WiFi attempts failed!");
+  Serial.println("WiFi Status: " + String(WiFi.status()));
+  Serial.println("Possible issues:");
+  Serial.println("1. Wrong SSID or Password");
+  Serial.println("2. WiFi network not in range");
+  Serial.println("3. WiFi network overloaded");
+  Serial.println("4. ESP32 WiFi module issue");
+  
+  updateDisplay("WiFi Failed!", "Check network");
+  delay(3000);
+  updateDisplay("SSID:", ssid);
+  delay(3000);
+  updateDisplay("Status Code:", String(WiFi.status()));
+  delay(3000);
+  
+  return false;
 }
 
 void setupFirebase() {
