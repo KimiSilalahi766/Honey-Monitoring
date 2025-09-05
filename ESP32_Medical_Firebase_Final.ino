@@ -12,7 +12,7 @@
 
 // ===== KONFIGURASI WIFI =====
 const char* ssid = "DIR-612";                    // GANTI dengan WiFi Anda
-const char* password = "passwordwifi";           // GANTI dengan password Anda
+const char* password = "88239483";           // GANTI dengan password Anda
 
 // ===== KONFIGURASI FIREBASE =====
 const String FIREBASE_HOST = "monitoring-jantung-f8031-default-rtdb.firebaseio.com";
