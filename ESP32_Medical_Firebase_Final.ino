@@ -10,14 +10,14 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
-// Konfigurasi WiFi - GANTI SESUAI JARINGAN ANDA
-const char* ssid = "DIR-612";        
-const char* password = "passwordwifi";      
+// ===== KONFIGURASI WIFI =====
+const char* ssid = "DIR-612";                    // GANTI dengan WiFi Anda
+const char* password = "passwordwifi";           // GANTI dengan password Anda
 
-// Konfigurasi Firebase dengan SSL Fingerprint
+// ===== KONFIGURASI FIREBASE =====
 const String FIREBASE_HOST = "monitoring-jantung-f8031-default-rtdb.firebaseio.com";
 const String FIREBASE_AUTH = "AIzaSyC_4FizusMK9ksaWcYXBmubsp3GGxuuX0g";
-const char* FIREBASE_FINGERPRINT = "5E:7A:EF:1E:29:B9:08:F8:9B:D7:CC:54:55:EA:2B:14:AF:90:C8:DB";
+const String DEVICE_ID = "ESP32_Medical_001";
 
 #define BUTTON_PIN 4
 #define RXD2 16
@@ -30,7 +30,6 @@ MAX30105 particleSensor;
 // Status sistem
 bool wifiConnected = false;
 bool firebaseReady = false;
-bool systemReady = false;
 
 char buff[64];
 bool b_read, b_discard;
@@ -68,35 +67,23 @@ void setup() {
   lcd.backlight();
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Heart Monitor SSL");
+  lcd.print("Heart Monitor");
   
-  Serial.println("\n=== Heart Monitor with SSL Fingerprint ===");
+  Serial.println("\n=== Heart Monitor with Firebase ===");
   
   // Setup WiFi
   setupWiFi();
   
-  // Setup Firebase dengan SSL fingerprint
+  // Setup Firebase
   if (wifiConnected) {
-    setupFirebaseSSL();
+    setupFirebase();
   }
   
-  // Setup Sensor
+  // Setup Sensors
   setupSensors();
   
-  // System Ready
-  if (systemReady) {
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Sistem Medis Siap");
-    lcd.setCursor(0, 1);
-    lcd.print("WiFi: " + (wifiConnected ? String("OK") : String("Gagal")));
-    lcd.setCursor(0, 2);
-    lcd.print("Firebase: " + (firebaseReady ? String("OK") : String("Gagal")));
-    lcd.setCursor(0, 3);
-    lcd.print("Tekan Tombol Biru");
-    
-    Serial.println("✅ Sistem siap! Tekan tombol untuk mulai.");
-  }
+  // Display Status
+  displaySystemStatus();
 }
 
 void loop() {
@@ -108,7 +95,7 @@ void loop() {
     lcd.print("Proses dimulai...");
     delay(1000);
 
-    // Lakukan pengukuran
+    // Lakukan pengukuran seperti biasa
     bacaSuhu();
     delay(1000);
     ukurBPM();
@@ -119,29 +106,18 @@ void loop() {
     delay(1000);
     tampilkanRingkasan();
     
-    // Kirim ke Firebase jika tersedia
-    if (firebaseReady && wifiConnected) {
-      kirimDataKeFirebaseSSL();
+    // TAMBAHAN: Kirim ke Firebase setelah pengukuran selesai
+    if (wifiConnected && firebaseReady) {
+      kirimKeFirebase();
     } else {
-      Serial.println("⚠️ Firebase tidak tersedia - data hanya disimpan lokal");
+      Serial.println("⚠️ Firebase tidak tersedia - data hanya lokal");
       lcd.setCursor(0, 3);
-      lcd.print("Data: Lokal saja");
+      lcd.print("Offline mode");
       delay(2000);
     }
 
     Serial.println("\nSelesai. Tekan tombol lagi...");
-    
-    // Kembali ke tampilan ready
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Sistem Medis Siap");
-    lcd.setCursor(0, 1);
-    lcd.print("WiFi: " + (wifiConnected ? String("OK") : String("Gagal")));
-    lcd.setCursor(0, 2);
-    lcd.print("Firebase: " + (firebaseReady ? String("OK") : String("Gagal")));
-    lcd.setCursor(0, 3);
-    lcd.print("Tekan Tombol Biru");
-    
+    displaySystemStatus();
     delay(3000);
   }
   
@@ -152,39 +128,37 @@ void setupWiFi() {
   lcd.setCursor(0, 1);
   lcd.print("Connecting WiFi...");
   
-  Serial.print("Menghubungkan ke WiFi: ");
+  Serial.print("Connecting to: ");
   Serial.println(ssid);
   
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   
-  int attempt = 0;
-  while (WiFi.status() != WL_CONNECTED && attempt < 20) {
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
     delay(1000);
     Serial.print(".");
-    attempt++;
+    attempts++;
     
     lcd.setCursor(0, 2);
-    lcd.print("Percobaan: " + String(attempt) + "/20");
+    lcd.print("Attempt: " + String(attempts) + "/20");
   }
   
   if (WiFi.status() == WL_CONNECTED) {
     wifiConnected = true;
-    Serial.println("\n✅ WiFi terhubung!");
-    Serial.print("IP Address: ");
+    Serial.println("\n✅ WiFi Connected!");
+    Serial.print("IP: ");
     Serial.println(WiFi.localIP());
-    Serial.print("Signal Strength: ");
-    Serial.println(WiFi.RSSI());
     
     lcd.setCursor(0, 1);
-    lcd.print("WiFi: Terhubung     ");
+    lcd.print("WiFi: Connected    ");
     lcd.setCursor(0, 2);
     lcd.print("IP: " + WiFi.localIP().toString());
   } else {
     wifiConnected = false;
-    Serial.println("\n❌ WiFi gagal terhubung");
+    Serial.println("\n❌ WiFi Failed");
     lcd.setCursor(0, 1);
-    lcd.print("WiFi: Gagal        ");
+    lcd.print("WiFi: Failed       ");
     lcd.setCursor(0, 2);
     lcd.print("Mode: Offline      ");
   }
@@ -192,97 +166,72 @@ void setupWiFi() {
   delay(2000);
 }
 
-void setupFirebaseSSL() {
+void setupFirebase() {
   lcd.setCursor(0, 3);
-  lcd.print("Setup Firebase SSL..");
+  lcd.print("Testing Firebase...");
   
-  Serial.println("Setup Firebase dengan SSL Fingerprint...");
-  Serial.println("Fingerprint: " + String(FIREBASE_FINGERPRINT));
+  Serial.println("Testing Firebase connection...");
   
-  WiFiClientSecure client;
-  HTTPClient https;
+  HTTPClient http;
+  String testUrl = "https://" + FIREBASE_HOST + "/test.json";
   
-  // Set SSL fingerprint untuk security
-  client.setFingerprint(FIREBASE_FINGERPRINT);
+  http.begin(testUrl);
+  http.addHeader("Content-Type", "application/json");
   
-  // Test connection dengan SSL
-  String testUrl = "https://" + FIREBASE_HOST + "/test_ssl.json";
+  String testData = "\"test_" + String(millis()) + "\"";
   
-  https.begin(client, testUrl);
-  https.addHeader("Content-Type", "application/json");
+  int responseCode = http.PUT(testData);
   
-  String testData = "\"ssl_test_" + String(millis()) + "\"";
-  
-  Serial.println("Testing SSL connection...");
-  Serial.println("URL: " + testUrl);
-  
-  int httpResponseCode = https.PUT(testData);
-  
-  if (httpResponseCode > 0) {
-    String response = https.getString();
-    Serial.println("✅ SSL Firebase terhubung!");
-    Serial.println("Response Code: " + String(httpResponseCode));
-    Serial.println("Response: " + response);
+  if (responseCode > 0) {
+    String response = http.getString();
+    Serial.println("✅ Firebase Connected!");
+    Serial.println("Response: " + String(responseCode));
     
     firebaseReady = true;
     lcd.setCursor(0, 3);
-    lcd.print("Firebase SSL: OK   ");
+    lcd.print("Firebase: OK       ");
     
-    // Hapus test data
-    https.DELETE();
-    Serial.println("✅ Test data SSL dihapus");
+    // Clean up test data
+    http.DELETE();
     
   } else {
     firebaseReady = false;
-    Serial.println("❌ SSL Firebase gagal");
-    Serial.println("Error Code: " + String(httpResponseCode));
-    
-    if (httpResponseCode == -1) {
-      Serial.println("🔍 SSL Fingerprint mismatch atau connection timeout");
-      Serial.println("💡 Coba update fingerprint dari grc.com");
-    } else if (httpResponseCode == 403) {
-      Serial.println("🔍 Firebase Rules problem");
-    }
-    
+    Serial.println("❌ Firebase Failed: " + String(responseCode));
     lcd.setCursor(0, 3);
-    lcd.print("Firebase SSL: Gagal");
+    lcd.print("Firebase: Failed   ");
   }
   
-  https.end();
+  http.end();
   delay(2000);
 }
 
 void setupSensors() {
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Setup Sensors...");
+  lcd.print("Setting up sensors..");
   
-  // Setup MLX90614
+  // MLX90614
   if (!mlx.begin()) {
-    Serial.println("❌ MLX90614 tidak ditemukan");
+    Serial.println("❌ MLX90614 not found");
     lcd.setCursor(0, 1);
-    lcd.print("MLX90614: Gagal");
-    while (1) {
-      delay(1000);
-    }
+    lcd.print("MLX90614: Failed");
+    while (1) delay(1000);
   } else {
     Serial.println("✅ MLX90614 OK");
     lcd.setCursor(0, 1);
     lcd.print("MLX90614: OK");
   }
 
-  // Setup MAX30102
+  // MAX30105
   if (!particleSensor.begin(Wire, I2C_SPEED_STANDARD)) {
-    Serial.println("❌ MAX30102 tidak terdeteksi");
+    Serial.println("❌ MAX30105 not found");
     lcd.setCursor(0, 2);
-    lcd.print("MAX30102: Gagal");
-    while (1) {
-      delay(1000);
-    }
+    lcd.print("MAX30105: Failed");
+    while (1) delay(1000);
   } else {
-    Serial.println("✅ MAX30102 OK");
+    Serial.println("✅ MAX30105 OK");
     lcd.setCursor(0, 2);
-    lcd.print("MAX30102: OK");
+    lcd.print("MAX30105: OK");
   }
 
   particleSensor.setup();
@@ -292,8 +241,20 @@ void setupSensors() {
   lcd.setCursor(0, 3);
   lcd.print("Sensors: Ready");
   
-  systemReady = true;
+  Serial.println("✅ All sensors ready");
   delay(2000);
+}
+
+void displaySystemStatus() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Heart Monitor Ready");
+  lcd.setCursor(0, 1);
+  lcd.print("WiFi: " + (wifiConnected ? String("OK") : String("Failed")));
+  lcd.setCursor(0, 2);
+  lcd.print("Firebase: " + (firebaseReady ? String("OK") : String("Failed")));
+  lcd.setCursor(0, 3);
+  lcd.print("Press Blue Button");
 }
 
 void bacaSuhu() {
@@ -417,6 +378,7 @@ void bacaTekananDarah() {
   unsigned long startTime = millis();
   bool dataReceived = false;
   
+  // Tambahkan timeout untuk mencegah hang
   while (!dataReceived && (millis() - startTime < 30000)) {
     if (Serial2.available()) {
       if (b_read == 0) {
@@ -444,6 +406,7 @@ void bacaTekananDarah() {
       }
     }
     
+    // Update LCD countdown
     if ((millis() - startTime) % 1000 < 50) {
       lcd.setCursor(0, 1);
       lcd.print("Timeout: " + String(30 - (millis() - startTime) / 1000) + "s    ");
@@ -461,30 +424,21 @@ void bacaTekananDarah() {
     Serial.println("SYS : " + String(hexSys));
     Serial.println("DIA : " + String(hexDias));
     Serial.println("BPM : " + String(hexBPM));
-
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("SYS: " + String(hexSys));
-    lcd.setCursor(0, 1);
-    lcd.print("DIA: " + String(hexDias));
-    lcd.setCursor(0, 2);
-    lcd.print("BPM: " + String(hexBPM));
   } else {
-    Serial.println("⚠️ Timeout - tidak ada data tekanan darah");
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Tensi: Timeout");
-    lcd.setCursor(0, 1);
-    lcd.print("Menggunakan estimasi");
-    
-    hexSys = 120; 
-    hexDias = 80;  
-    hexBPM = bpm_final; 
-    
-    lcd.setCursor(0, 2);
-    lcd.print("SYS: " + String(hexSys) + " DIA: " + String(hexDias));
+    // Jika timeout, gunakan nilai default
+    Serial.println("⚠️ Blood pressure timeout - using defaults");
+    hexSys = 120;
+    hexDias = 80;
+    hexBPM = bpm_final; // Gunakan BPM dari sensor
   }
-  
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("SYS: " + String(hexSys));
+  lcd.setCursor(0, 1);
+  lcd.print("DIA: " + String(hexDias));
+  lcd.setCursor(0, 2);
+  lcd.print("BPM: " + String(hexBPM));
   delay(2000);
 }
 
@@ -502,121 +456,117 @@ void tampilkanRingkasan() {
   Serial.println("\n=== HASIL AKHIR ===");
   Serial.println("Suhu: " + String(suhu, 1) + " °C");
   Serial.println("BPM: " + String(bpm_final));
-  Serial.println("SpO2: " + String(spo2_final) + " %");
+  Serial.println("SpO2: " + String(spo2_final) + " %");  
   Serial.println("Tekanan Darah: " + String(hexSys) + "/" + String(hexDias) + " mmHg");
-  Serial.println("Status Kesehatan: " + getHealthStatus());
+  Serial.println("Status: " + getHealthStatus());
   Serial.println("==================");
   
   delay(5000);
 }
 
 String getHealthStatus() {
-  bool tempNormal = (suhu >= 36.0 && suhu <= 37.5);
-  bool bpmNormal = (bpm_final >= 60 && bpm_final <= 100);
-  bool spo2Normal = (spo2_final >= 95);
-  bool bpNormal = (hexSys >= 90 && hexSys <= 140 && hexDias >= 60 && hexDias <= 90);
+  // Simple health classification
+  bool tempOK = (suhu >= 36.0 && suhu <= 37.5);
+  bool bpmOK = (bpm_final >= 60 && bpm_final <= 100);
+  bool spo2OK = (spo2_final >= 95);
+  bool bpOK = (hexSys >= 90 && hexSys <= 140 && hexDias >= 60 && hexDias <= 90);
   
-  if (tempNormal && bpmNormal && spo2Normal && bpNormal) {
+  if (tempOK && bmpOK && spo2OK && bpOK) {
     return "Normal";
-  } else if ((!tempNormal && (suhu < 35.0 || suhu > 39.0)) ||
-             (!bpmNormal && (bpm_final < 50 || bpm_final > 120)) ||
-             (!spo2Normal && spo2_final < 90) ||
-             (!bpNormal && (hexSys > 160 || hexDias > 100))) {
+  } else if ((suhu < 35.0 || suhu > 39.0) || (bmp_final < 50 || bmp_final > 120) || 
+             (spo2_final < 90) || (hexSys > 160 || hexDias > 100)) {
     return "Berbahaya";
   } else {
     return "Kurang Normal";
   }
 }
 
-void kirimDataKeFirebaseSSL() {
+void kirimKeFirebase() {
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Kirim via SSL...");
+  lcd.print("Sending to Firebase..");
   
-  Serial.println("Mengirim data ke Firebase via SSL...");
+  Serial.println("\n--- Sending to Firebase ---");
   
-  WiFiClientSecure client;
-  HTTPClient https;
+  HTTPClient http;
   
-  // Set SSL fingerprint
-  client.setFingerprint(FIREBASE_FINGERPRINT);
-  
+  // Create unique data path
   unsigned long timestamp = millis();
-  String path = "/data_jantung/data_" + String(timestamp) + ".json";
-  String url = "https://" + FIREBASE_HOST + path;
+  String dataPath = "/data_jantung/data_" + String(timestamp) + ".json";
+  String url = "https://" + FIREBASE_HOST + dataPath;
   
-  // Buat JSON data
-  String jsonData = "{";
-  jsonData += "\"timestamp\":" + String(timestamp) + ",";
-  jsonData += "\"device_id\":\"ESP32_SSL_Medical\",";
-  jsonData += "\"suhu\":\"" + String(suhu, 1) + "\",";
-  jsonData += "\"bpm\":\"" + String(bpm_final) + "\",";
-  jsonData += "\"spo2\":\"" + String(spo2_final) + "\",";
-  jsonData += "\"tekanan_sys\":\"" + String(hexSys) + "\",";
-  jsonData += "\"tekanan_dia\":\"" + String(hexDias) + "\",";
-  jsonData += "\"kondisi\":\"" + getHealthStatus() + "\",";
-  jsonData += "\"waktu_baca\":\"" + getTimeString() + "\"";
-  jsonData += "}";
+  // Create JSON data
+  StaticJsonDocument<512> doc;
+  doc["timestamp"] = timestamp;
+  doc["device_id"] = DEVICE_ID;
+  doc["suhu"] = String(suhu, 1);
+  doc["bpm"] = String(bpm_final);
+  doc["spo2"] = String(spo2_final);
+  doc["tekanan_sys"] = String(hexSys);
+  doc["tekanan_dia"] = String(hexDias);
+  doc["kondisi"] = getHealthStatus();
+  doc["waktu_baca"] = getReadableTime();
   
-  Serial.println("SSL URL: " + url);
-  Serial.println("JSON: " + jsonData);
+  String jsonString;
+  serializeJson(doc, jsonString);
   
-  https.begin(client, url);
-  https.addHeader("Content-Type", "application/json");
+  Serial.println("URL: " + url);
+  Serial.println("Data: " + jsonString);
   
-  int httpResponseCode = https.PUT(jsonData);
+  // Send to Firebase
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
   
-  if (httpResponseCode > 0) {
-    String response = https.getString();
-    Serial.println("✅ Data SSL berhasil dikirim!");
-    Serial.println("Response Code: " + String(httpResponseCode));
-    Serial.println("Response: " + response);
+  int responseCode = http.PUT(jsonString);
+  
+  if (responseCode > 0) {
+    String response = http.getString();
+    Serial.println("✅ Firebase Success!");
+    Serial.println("Response: " + String(responseCode));
+    Serial.println("Data: " + response);
     
     lcd.setCursor(0, 1);
-    lcd.print("SSL: Berhasil!");
-    lcd.setCursor(0, 2);
-    lcd.print("Code: " + String(httpResponseCode));
+    lcd.print("Success! Code: " + String(responseCode));
     
-    // Update latest data
-    https.begin(client, "https://" + FIREBASE_HOST + "/data_jantung/latest.json");
-    https.addHeader("Content-Type", "application/json");
-    if (https.PUT(jsonData) > 0) {
-      Serial.println("✅ Latest SSL data updated");
+    // Also update latest data for real-time monitoring
+    String latestUrl = "https://" + FIREBASE_HOST + "/data_jantung/latest.json";
+    http.end();
+    http.begin(latestUrl);
+    http.addHeader("Content-Type", "application/json");
+    
+    if (http.PUT(jsonString) > 0) {
+      Serial.println("✅ Latest data updated!");
+      lcd.setCursor(0, 2);
+      lcd.print("Latest data updated!");
     }
     
   } else {
-    Serial.println("❌ SSL Firebase gagal");
-    Serial.println("Error Code: " + String(httpResponseCode));
+    Serial.println("❌ Firebase Failed!");
+    Serial.println("Error: " + String(responseCode));
     
     lcd.setCursor(0, 1);
-    lcd.print("SSL: Gagal");
-    lcd.setCursor(0, 2);
-    lcd.print("Code: " + String(httpResponseCode));
+    lcd.print("Failed! Code: " + String(responseCode));
     
-    if (httpResponseCode == -1) {
-      Serial.println("🔍 SSL Fingerprint mismatch");
-      Serial.println("💡 Update fingerprint dari: https://grc.com/fingerprints.htm");
+    if (responseCode == 403) {
+      Serial.println("🔍 Check Firebase Rules!");
+      lcd.setCursor(0, 2);
+      lcd.print("Check Firebase Rules!");
     }
   }
   
-  https.end();
+  http.end();
   delay(3000);
 }
 
-String getTimeString() {
-  unsigned long seconds = millis() / 1000;
-  unsigned long minutes = seconds / 60;
-  unsigned long hours = minutes / 60;
+String getReadableTime() {
+  unsigned long totalSeconds = millis() / 1000;
+  int hours = (totalSeconds / 3600) % 24;
+  int minutes = (totalSeconds / 60) % 60;
+  int seconds = totalSeconds % 60;
   
-  String timeStr = "";
-  if (hours % 24 < 10) timeStr += "0";
-  timeStr += String(hours % 24) + ":";
-  if (minutes % 60 < 10) timeStr += "0";
-  timeStr += String(minutes % 60) + ":";
-  if (seconds % 60 < 10) timeStr += "0";
-  timeStr += String(seconds % 60);
-  
-  return timeStr;
+  char timeStr[10];
+  sprintf(timeStr, "%02d:%02d:%02d", hours, minutes, seconds);
+  return String(timeStr);
 }
 
 int hexToDec(char high, char low) {
