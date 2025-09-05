@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { X, AlertTriangle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -22,16 +22,29 @@ export function NotificationSystem({ notifications, onClose, className }: Notifi
 
   useEffect(() => {
     setVisibleNotifications(notifications);
+  }, [notifications]);
+  
+  // Auto-close notifications effect - proper implementation
+  const scheduledTimers = useRef<Set<string>>(new Set());
+  
+  useEffect(() => {
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
     
-    // Auto-close notifications after 5 seconds
     notifications.forEach(notification => {
-      if (notification.autoClose !== false) {
-        setTimeout(() => {
+      if (notification.autoClose !== false && !scheduledTimers.current.has(notification.id)) {
+        scheduledTimers.current.add(notification.id);
+        const timeout = setTimeout(() => {
+          scheduledTimers.current.delete(notification.id);
           onClose(notification.id);
         }, 5000);
+        timeouts.push(timeout);
       }
     });
-  }, [notifications, onClose]);
+    
+    return () => {
+      timeouts.forEach(timeout => clearTimeout(timeout));
+    };
+  }, [notifications.map(n => n.id).join(','), onClose]);
 
   const getNotificationConfig = (type: string) => {
     switch (type) {
@@ -74,10 +87,13 @@ export function NotificationSystem({ notifications, onClose, className }: Notifi
   if (visibleNotifications.length === 0) return null;
 
   return (
-    <div className={cn(
-      "fixed top-24 right-4 z-50 space-y-3 max-w-sm",
-      className
-    )}>
+    <div 
+      className={cn(
+        "fixed top-24 right-4 z-50 space-y-3 max-w-sm",
+        className
+      )}
+      aria-live="polite"
+    >
       {visibleNotifications.map((notification) => {
         const config = getNotificationConfig(notification.type);
         const IconComponent = config.icon;
@@ -143,7 +159,7 @@ export const useNotifications = () => {
     autoClose: boolean = true
   ) => {
     const notification: Notification = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random()}`, // More unique ID
       type,
       title,
       message,
@@ -151,7 +167,12 @@ export const useNotifications = () => {
       autoClose
     };
     
-    setNotifications(prev => [notification, ...prev.slice(0, 4)]); // Keep max 5 notifications
+    // Check if similar notification already exists to prevent duplicates
+    setNotifications(prev => {
+      const exists = prev.some(n => n.title === title && n.message === message && n.type === type);
+      if (exists) return prev;
+      return [notification, ...prev.slice(0, 4)];
+    });
   };
 
   const removeNotification = (id: string) => {

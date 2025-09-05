@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,22 +38,28 @@ export default function Dashboard() {
   
   const { notifications, addNotification, removeNotification } = useNotifications();
 
-  // Monitor for dangerous conditions and trigger alerts
+  // Safe notifications - only trigger on condition changes
+  const lastCondition = useRef<string | null>(null);
+  
   useEffect(() => {
-    if (currentData && currentData.kondisi === 'Berbahaya') {
-      addNotification(
-        'danger',
-        'Critical Alert',
-        'Heart condition detected as "Berbahaya". Immediate attention required.'
-      );
-    } else if (currentData && currentData.kondisi === 'Kurang Normal') {
-      addNotification(
-        'warning', 
-        'Warning',
-        'Heart condition detected as "Kurang Normal". Monitor closely.'
-      );
+    if (currentData && currentData.kondisi && currentData.kondisi !== lastCondition.current) {
+      lastCondition.current = currentData.kondisi;
+      
+      if (currentData.kondisi === 'Berbahaya') {
+        addNotification(
+          'danger',
+          'Peringatan Kritis',
+          'Kondisi jantung terdeteksi "Berbahaya". Segera konsultasi dengan dokter.'
+        );
+      } else if (currentData.kondisi === 'Kurang Normal') {
+        addNotification(
+          'warning', 
+          'Peringatan',
+          'Kondisi jantung terdeteksi "Kurang Normal". Pantau dengan hati-hati.'
+        );
+      }
     }
-  }, [currentData?.timestamp, addNotification]);
+  }, [currentData?.kondisi, addNotification]);
 
   // Get enhanced classification using client-side Naive Bayes
   const getEnhancedClassification = () => {

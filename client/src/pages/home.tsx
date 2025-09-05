@@ -5,9 +5,9 @@ import { Link } from "wouter";
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-background">
       {/* Background gradient animation */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-accent/20 animate-gradient" />
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-accent/10" />
       
       {/* Floating particles effect */}
       <div className="absolute inset-0 pointer-events-none">
@@ -16,71 +16,110 @@ export default function Home() {
         <div className="absolute bottom-1/4 left-1/3 w-1 h-1 bg-primary rounded-full animate-bounce opacity-80" />
       </div>
 
-      <div className="container mx-auto px-4 text-center relative z-10">
-        <Card className="glass-card border-border/50 bg-card/40 backdrop-blur-lg p-12 rounded-3xl max-w-4xl mx-auto hover-lift">
-          <CardContent className="p-0">
-            {/* Thesis title */}
-            <div className="mb-8">
-              <h1 className="text-4xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent leading-tight">
-                PENERAPAN INTERNET OF THINGS
-              </h1>
-              <h2 className="text-2xl md:text-3xl font-semibold mb-4 text-foreground/90">
-                DALAM IDENTIFIKASI DINI DAN MONITORING
-              </h2>
-              <h3 className="text-xl md:text-2xl font-medium text-accent">
-                KONDISI JANTUNG SECARA REAL-TIME
-              </h3>
+      <div className="container mx-auto px-4 text-center relative z-10 py-8">
+        <Card className="glass-card border-border/50 bg-card/60 backdrop-blur-lg p-8 md:p-12 rounded-3xl max-w-5xl mx-auto shadow-2xl">
+          <CardContent className="p-0 space-y-8">
+            {/* Thesis title - Better spacing */}
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent leading-tight">
+                  PENERAPAN INTERNET OF THINGS
+                </h1>
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-xl md:text-2xl lg:text-3xl font-semibold text-foreground/90 max-w-4xl mx-auto leading-relaxed">
+                  DALAM IDENTIFIKASI DINI DAN MONITORING
+                </h2>
+                <h3 className="text-lg md:text-xl lg:text-2xl font-medium text-accent max-w-3xl mx-auto">
+                  KONDISI JANTUNG SECARA REAL-TIME
+                </h3>
+              </div>
+              
+              {/* Subtitle */}
+              <div className="pt-4">
+                <p className="text-sm md:text-base text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+                  Sistem monitoring jantung menggunakan ESP32, sensor MAX30105, dan algoritma Naive Bayes untuk klasifikasi kondisi jantung real-time
+                </p>
+              </div>
             </div>
 
-            {/* Heart monitoring visualization */}
-            <div className="mb-8 relative">
-              <div className="flex justify-center items-center space-x-8">
-                <div className="glass-card border-border/30 bg-card/20 p-6 rounded-2xl animate-pulse-slow">
-                  <Heart className="w-16 h-16 text-destructive mx-auto mb-2" fill="currentColor" />
-                  <p className="text-sm text-muted-foreground">ESP32 IoT</p>
+            {/* Heart monitoring visualization - Better responsive design */}
+            <div className="relative">
+              <div className="flex flex-col sm:flex-row justify-center items-center gap-6 sm:gap-8">
+                <div className="glass-card border-border/30 bg-gradient-to-br from-red-500/10 to-pink-500/20 p-6 rounded-2xl transform hover:scale-105 transition-transform duration-300">
+                  <Heart className="w-12 md:w-16 h-12 md:h-16 text-red-500 mx-auto mb-3 animate-pulse" fill="currentColor" />
+                  <p className="text-sm font-medium text-foreground">ESP32 IoT Device</p>
+                  <p className="text-xs text-muted-foreground mt-1">Heart Rate Sensor</p>
                 </div>
                 
                 <div className="flex flex-col items-center">
-                  <div className="w-px h-16 bg-gradient-to-b from-transparent via-primary to-transparent" />
-                  <div className="w-2 h-2 bg-primary rounded-full animate-ping" />
+                  <div className="w-px h-8 sm:h-16 bg-gradient-to-b from-transparent via-primary to-transparent" />
+                  <div className="w-3 h-3 bg-primary rounded-full animate-ping" />
+                  <p className="text-xs text-primary font-medium mt-2">Real-time Data</p>
                 </div>
                 
-                <div className="glass-card border-border/30 bg-card/20 p-6 rounded-2xl">
-                  <BarChart3 className="w-16 h-16 text-primary mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Real-time Dashboard</p>
+                <div className="glass-card border-border/30 bg-gradient-to-br from-primary/10 to-accent/20 p-6 rounded-2xl transform hover:scale-105 transition-transform duration-300">
+                  <BarChart3 className="w-12 md:w-16 h-12 md:h-16 text-primary mx-auto mb-3" />
+                  <p className="text-sm font-medium text-foreground">Web Dashboard</p>
+                  <p className="text-xs text-muted-foreground mt-1">Naive Bayes Analysis</p>
                 </div>
               </div>
             </div>
 
-            {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Link href="/dashboard">
-                <Button 
-                  size="lg"
-                  className="group bg-gradient-to-r from-primary to-accent text-primary-foreground px-8 py-4 text-lg font-semibold hover:shadow-lg transition-all duration-300 border-0"
-                  data-testid="button-go-to-dashboard"
-                >
-                  Go to Dashboard
-                  <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
-                </Button>
-              </Link>
+            {/* CTA Buttons - Better spacing and design */}
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                <Link href="/dashboard">
+                  <Button 
+                    size="lg"
+                    className="group bg-gradient-to-r from-primary to-accent text-white px-10 py-5 text-lg font-semibold hover:shadow-xl transition-all duration-300 border-0 rounded-xl w-full sm:w-auto"
+                    data-testid="button-go-to-dashboard"
+                  >
+                    Mulai Monitoring Jantung
+                    <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
+                  </Button>
+                </Link>
+                
+                <Link href="/analysis">
+                  <Button 
+                    variant="outline" 
+                    size="lg"
+                    className="glass-card border-border/50 bg-card/30 px-10 py-5 text-lg font-semibold hover:bg-white/10 transition-all duration-300 rounded-xl w-full sm:w-auto"
+                    data-testid="button-view-analysis"
+                  >
+                    Lihat Analisis Naive Bayes
+                  </Button>
+                </Link>
+              </div>
               
-              <Button 
-                variant="outline" 
-                size="lg"
-                className="glass-card border-border/30 bg-card/20 px-8 py-4 text-lg font-semibold hover:bg-white/10 transition-colors"
-                data-testid="button-learn-more"
-              >
-                Learn More
-              </Button>
+              <div className="pt-2">
+                <p className="text-sm text-muted-foreground">
+                  Sistem sudah siap • ESP32 terkonfigurasi • Dashboard real-time aktif
+                </p>
+              </div>
             </div>
 
-            {/* Disclaimer */}
-            <Card className="mt-8 p-4 glass-card border border-destructive/30 bg-destructive/5">
+            {/* Enhanced disclaimer with features */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+              <div className="glass-card bg-green-500/10 border-green-500/30 p-4 rounded-xl">
+                <h4 className="font-semibold text-green-400 mb-2">✓ Monitoring Real-time</h4>
+                <p className="text-xs text-muted-foreground">Data jantung langsung dari ESP32</p>
+              </div>
+              <div className="glass-card bg-blue-500/10 border-blue-500/30 p-4 rounded-xl">
+                <h4 className="font-semibold text-blue-400 mb-2">✓ Naive Bayes AI</h4>
+                <p className="text-xs text-muted-foreground">Klasifikasi otomatis kondisi jantung</p>
+              </div>
+              <div className="glass-card bg-purple-500/10 border-purple-500/30 p-4 rounded-xl">
+                <h4 className="font-semibold text-purple-400 mb-2">✓ Firebase Database</h4>
+                <p className="text-xs text-muted-foreground">Penyimpanan data cloud real-time</p>
+              </div>
+            </div>
+            
+            <Card className="mt-6 p-4 glass-card border border-amber-500/30 bg-amber-500/10">
               <CardContent className="p-0">
-                <p className="text-sm text-muted-foreground">
-                  <span className="text-destructive font-semibold">Disclaimer:</span> 
-                  This system is for monitoring only, not medical diagnosis or recommendations.
+                <p className="text-sm text-muted-foreground text-center">
+                  <span className="text-amber-400 font-semibold">Peringatan:</span> 
+                  Sistem ini untuk monitoring penelitian, bukan untuk diagnosis medis. Konsultasi dengan dokter untuk masalah kesehatan.
                 </p>
               </CardContent>
             </Card>
