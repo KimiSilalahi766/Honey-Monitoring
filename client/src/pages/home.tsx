@@ -87,7 +87,7 @@ export default function Home() {
                     className="glass-card border-border/50 bg-card/30 px-10 py-5 text-lg font-semibold hover:bg-white/10 transition-all duration-300 rounded-xl w-full sm:w-auto"
                     data-testid="button-view-analysis"
                   >
-                    Analisis AI
+                    Analisis
                   </Button>
                 </Link>
               </div>
