@@ -21,6 +21,7 @@ import { ClassificationStatus } from "@/components/classification-status";
 import { RealTimeChart } from "@/components/real-time-chart";
 import { DataHistoryTable } from "@/components/data-history-table";
 import { NotificationSystem, useNotifications } from "@/components/notification-system";
+import { FirebaseStatus } from "@/components/firebase-status";
 import { useFirebaseData } from "@/hooks/use-firebase-data";
 import { classifyHeartCondition } from "@/lib/naive-bayes";
 import type { ParameterInfo } from '@shared/schema';
@@ -306,68 +307,88 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Charts and History */}
+        {/* Charts and Firebase Status */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <RealTimeChart 
             data={historicalData} 
             currentData={currentData}
           />
           
-          <Card className="glass-card bg-card/40 backdrop-blur-lg border-border/50">
-            <CardContent className="p-6">
-              <h3 className="text-xl font-bold mb-4 flex items-center text-foreground">
+          <FirebaseStatus 
+            isConnected={isConnected}
+            lastUpdate={lastUpdate}
+          />
+        </div>
+        
+        {/* Current Status Display */}
+        {currentData && (
+          <Card className="glass-card bg-card/40 backdrop-blur-lg border-border/50 mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center text-xl">
                 <Activity className="w-5 h-5 mr-2 text-accent" />
-                Current Status
-              </h3>
-              
-              {currentData ? (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center">
-                    <div className="w-24 h-24 mx-auto mb-2 relative">
-                      <div className="w-full h-full bg-gradient-to-br from-accent/20 to-accent/40 rounded-full flex items-center justify-center border-4 border-accent/30">
-                        <span className="text-lg font-bold font-mono text-accent">
-                          {currentData.bpm}
-                        </span>
-                      </div>
+                Status Real-time ESP32
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="w-20 h-20 mx-auto mb-2 relative">
+                    <div className="w-full h-full bg-gradient-to-br from-red-400/20 to-orange-400/40 rounded-full flex items-center justify-center border-4 border-red-400/30">
+                      <span className="text-base font-bold font-mono text-red-400">
+                        {currentData.suhu}°
+                      </span>
                     </div>
-                    <p className="text-xs text-muted-foreground font-medium">BPM</p>
                   </div>
-                  
-                  <div className="text-center">
-                    <div className="w-24 h-24 mx-auto mb-2 relative">
-                      <div className="w-full h-full bg-gradient-to-br from-blue-400/20 to-cyan-400/40 rounded-full flex items-center justify-center border-4 border-blue-400/30">
-                        <span className="text-lg font-bold font-mono text-blue-400">
-                          {currentData.spo2}%
-                        </span>
-                      </div>
+                  <p className="text-xs text-muted-foreground font-medium">Suhu</p>
+                </div>
+                
+                <div className="text-center">
+                  <div className="w-20 h-20 mx-auto mb-2 relative">
+                    <div className="w-full h-full bg-gradient-to-br from-accent/20 to-accent/40 rounded-full flex items-center justify-center border-4 border-accent/30">
+                      <span className="text-base font-bold font-mono text-accent">
+                        {currentData.bpm}
+                      </span>
                     </div>
-                    <p className="text-xs text-muted-foreground font-medium">SpO2</p>
                   </div>
+                  <p className="text-xs text-muted-foreground font-medium">BPM</p>
                 </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Waiting for sensor data...</p>
+                
+                <div className="text-center">
+                  <div className="w-20 h-20 mx-auto mb-2 relative">
+                    <div className="w-full h-full bg-gradient-to-br from-blue-400/20 to-cyan-400/40 rounded-full flex items-center justify-center border-4 border-blue-400/30">
+                      <span className="text-base font-bold font-mono text-blue-400">
+                        {currentData.spo2}%
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-medium">SpO2</p>
                 </div>
-              )}
+                
+                <div className="text-center">
+                  <div className="w-20 h-20 mx-auto mb-2 relative">
+                    <div className="w-full h-full bg-gradient-to-br from-purple-400/20 to-indigo-400/40 rounded-full flex items-center justify-center border-4 border-purple-400/30">
+                      <span className="text-sm font-bold font-mono text-purple-400">
+                        {currentData.tekanan_sys}/{currentData.tekanan_dia}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-medium">BP</p>
+                </div>
+              </div>
               
-              {currentData && (
-                <div className="mt-4 pt-4 border-t border-border/30">
-                  <div className="flex justify-between items-center text-xs text-muted-foreground">
-                    <span>Signal Quality</span>
-                    <Badge 
-                      variant={currentData.signal_quality >= 80 ? "default" : 
-                              currentData.signal_quality >= 60 ? "secondary" : "destructive"}
-                      className="font-mono"
-                    >
-                      {currentData.signal_quality}%
-                    </Badge>
-                  </div>
-                </div>
-              )}
+              <div className="mt-4 pt-4 border-t border-border/30 flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Signal Quality:</span>
+                <Badge 
+                  variant={currentData.signal_quality >= 80 ? "default" : 
+                          currentData.signal_quality >= 60 ? "secondary" : "destructive"}
+                  className="font-mono"
+                >
+                  {currentData.signal_quality}%
+                </Badge>
+              </div>
             </CardContent>
           </Card>
-        </div>
+        )}
 
         {/* Data History Table */}
         <DataHistoryTable data={historicalData} />
