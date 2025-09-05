@@ -4,7 +4,7 @@
 
 // Konfigurasi WiFi - GANTI SESUAI JARINGAN ANDA
 const char* ssid = "DIR-612";        
-const char* password = "passwordwifi";      
+const char* password = "88239484";      
 
 // Konfigurasi Firebase
 #define API_KEY "AIzaSyC_4FizusMK9ksaWcYXBmubsp3GGxuuX0g"
