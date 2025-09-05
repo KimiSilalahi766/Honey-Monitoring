@@ -23,7 +23,11 @@ export function RealTimeChart({ data, currentData, className }: RealTimeChartPro
         chartInstance.current.destroy();
       }
 
-      const ctx = chartRef.current!.getContext('2d')!;
+      // Ensure canvas is still available after async import
+      if (!chartRef.current) return;
+      
+      const ctx = chartRef.current.getContext('2d');
+      if (!ctx) return;
       
       // Prepare data for last 20 readings
       const chartData = data.slice(0, 20).reverse();
@@ -36,7 +40,8 @@ export function RealTimeChart({ data, currentData, className }: RealTimeChartPro
         });
       });
 
-      chartInstance.current = new (Chart.default || Chart)(ctx, {
+      const ChartClass = Chart.default || Chart;
+      chartInstance.current = new ChartClass(ctx, {
         type: 'line',
         data: {
           labels,

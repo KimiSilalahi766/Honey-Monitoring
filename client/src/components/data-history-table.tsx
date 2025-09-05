@@ -232,7 +232,7 @@ export function DataHistoryTable({ data, className }: DataHistoryTableProps) {
                       "py-3 px-4 font-mono font-semibold",
                       getStatusColor(getParameterStatus(row.suhu, 'suhu'))
                     )}>
-                      {row.suhu.toFixed(1)}
+                      {typeof row.suhu === 'number' ? row.suhu.toFixed(1) : parseFloat(row.suhu || '0').toFixed(1)}
                     </td>
                     <td className={cn(
                       "py-3 px-4 font-mono font-semibold",
