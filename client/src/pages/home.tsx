@@ -38,7 +38,7 @@ export default function Home() {
               {/* Subtitle */}
               <div className="pt-4">
                 <p className="text-sm md:text-base text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-                  Sistem monitoring jantung menggunakan ESP32, sensor MAX30105, dan algoritma Naive Bayes untuk klasifikasi kondisi jantung real-time
+                  Monitoring jantung real-time dengan ESP32 dan Naive Bayes AI
                 </p>
               </div>
             </div>
@@ -75,7 +75,7 @@ export default function Home() {
                     className="group bg-gradient-to-r from-primary to-accent text-white px-10 py-5 text-lg font-semibold hover:shadow-xl transition-all duration-300 border-0 rounded-xl w-full sm:w-auto"
                     data-testid="button-go-to-dashboard"
                   >
-                    Mulai Monitoring Jantung
+                    Mulai Monitoring
                     <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-1" />
                   </Button>
                 </Link>
@@ -87,14 +87,14 @@ export default function Home() {
                     className="glass-card border-border/50 bg-card/30 px-10 py-5 text-lg font-semibold hover:bg-white/10 transition-all duration-300 rounded-xl w-full sm:w-auto"
                     data-testid="button-view-analysis"
                   >
-                    Lihat Analisis Naive Bayes
+                    Analisis AI
                   </Button>
                 </Link>
               </div>
               
               <div className="pt-2">
                 <p className="text-sm text-muted-foreground">
-                  Sistem sudah siap • ESP32 terkonfigurasi • Dashboard real-time aktif
+                  Sistem siap • ESP32 ready • Real-time dashboard
                 </p>
               </div>
             </div>

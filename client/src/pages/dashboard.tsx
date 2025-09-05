@@ -13,18 +13,16 @@ import {
   RefreshCw,
   Brain,
   BarChart3,
-  TrendingUp
+  TestTube
 } from "lucide-react";
 import { Link } from "wouter";
-import { ParameterCard } from "@/components/parameter-card";
-import { ClassificationStatus } from "@/components/classification-status";
 import { SimpleCharts } from "@/components/simple-charts";
-import { DataHistoryTable } from "@/components/data-history-table";
 import { NotificationSystem, useNotifications } from "@/components/notification-system";
-import { FirebaseStatus } from "@/components/firebase-status";
 import { useFirebaseData } from "@/hooks/use-firebase-data";
 import { classifyHeartCondition } from "@/lib/naive-bayes";
-import type { ParameterInfo } from '@shared/schema';
+import { database } from "@/lib/firebase";
+import { ref, push } from "firebase/database";
+import { useState } from 'react';
 
 export default function Dashboard() {
   const { 
@@ -38,6 +36,7 @@ export default function Dashboard() {
   } = useFirebaseData();
   
   const { notifications, addNotification, removeNotification } = useNotifications();
+  const [isSendingTest, setIsSendingTest] = useState(false);
 
   // Safe notifications - only trigger on condition changes
   const lastCondition = useRef<string | null>(null);
@@ -50,17 +49,35 @@ export default function Dashboard() {
         addNotification(
           'danger',
           'Peringatan Kritis',
-          'Kondisi jantung terdeteksi "Berbahaya". Segera konsultasi dengan dokter.'
-        );
-      } else if (currentData.kondisi === 'Kurang Normal') {
-        addNotification(
-          'warning', 
-          'Peringatan',
-          'Kondisi jantung terdeteksi "Kurang Normal". Pantau dengan hati-hati.'
+          'Kondisi jantung berbahaya terdeteksi!'
         );
       }
     }
   }, [currentData?.kondisi, addNotification]);
+
+  // Send test data function
+  const sendTestData = async () => {
+    setIsSendingTest(true);
+    try {
+      const testData = {
+        timestamp: Date.now(),
+        suhu: parseFloat((36.5 + Math.random() * 1.5).toFixed(1)),
+        bpm: Math.floor(70 + Math.random() * 30),
+        spo2: Math.floor(95 + Math.random() * 5),
+        tekanan_sys: Math.floor(110 + Math.random() * 30),
+        tekanan_dia: Math.floor(70 + Math.random() * 20),
+        signal_quality: Math.floor(80 + Math.random() * 20),
+        kondisi: Math.random() > 0.8 ? 'Kurang Normal' : 'Normal'
+      };
+
+      const dataRef = ref(database, 'data_jantung');
+      await push(dataRef, testData);
+    } catch (error) {
+      console.error('Error sending test data:', error);
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
 
   // Get enhanced classification using client-side Naive Bayes
   const getEnhancedClassification = () => {
@@ -81,58 +98,15 @@ export default function Dashboard() {
     }
   };
 
-  // Prepare parameter data for cards
-  const getParameterInfo = (): Record<string, ParameterInfo> => {
-    if (!currentData) return {};
-
-    return {
-      temperature: {
-        value: currentData.suhu,
-        unit: '°C',
-        status: currentData.suhu >= 36.1 && currentData.suhu <= 37.2 ? 'normal' : 
-                currentData.suhu >= 35.0 && currentData.suhu <= 38.0 ? 'warning' : 'danger',
-        range: '36.1-37.2°C',
-        icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l6-6v13h4l-4 6h-6z"/>'
-      },
-      heartRate: {
-        value: currentData.bpm,
-        unit: ' BPM',
-        status: currentData.bpm >= 60 && currentData.bpm <= 100 ? 'normal' :
-                currentData.bpm >= 50 && currentData.bpm <= 110 ? 'warning' : 'danger',
-        range: '60-100 BPM',
-        icon: `<path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>`
-      },
-      bloodOxygen: {
-        value: currentData.spo2,
-        unit: '%',
-        status: currentData.spo2 >= 95 ? 'normal' :
-                currentData.spo2 >= 90 ? 'warning' : 'danger',
-        range: '95-100%',
-        icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>'
-      },
-      bloodPressure: {
-        value: currentData.tekanan_sys,
-        unit: `/${currentData.tekanan_dia}`,
-        status: (currentData.tekanan_sys >= 90 && currentData.tekanan_sys <= 120 &&
-                currentData.tekanan_dia >= 60 && currentData.tekanan_dia <= 80) ? 'normal' :
-                (currentData.tekanan_sys >= 80 && currentData.tekanan_sys <= 140 &&
-                currentData.tekanan_dia >= 50 && currentData.tekanan_dia <= 90) ? 'warning' : 'danger',
-        range: '90-120/60-80 mmHg',
-        icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>'
-      }
-    };
-  };
-
   const enhancedClassification = getEnhancedClassification();
-  const parameters = getParameterInfo();
 
   if (loading) {
     return (
       <div className="min-h-screen pt-24 flex items-center justify-center">
-        <Card className="glass-card bg-card/40 backdrop-blur-lg p-8 rounded-2xl">
+        <Card className="glass-card p-8 rounded-2xl">
           <CardContent className="flex items-center space-x-3">
             <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-            <span className="text-lg font-medium">Loading monitoring system...</span>
+            <span className="text-lg font-medium">Memuat sistem monitoring...</span>
           </CardContent>
         </Card>
       </div>
@@ -140,57 +114,51 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen pt-24 pb-12 relative">
-      {/* Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-accent/10" />
-      
-      <div className="container mx-auto px-4 relative z-10">
-        {/* Dashboard Header */}
+    <div className="min-h-screen pt-20 pb-12">
+      <div className="container mx-auto px-4">
+        
+        {/* Header - Simplified */}
         <div className="mb-8">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold text-foreground mb-2">
-                Heart Condition Monitor
+                Monitoring Jantung IoT
               </h1>
               <p className="text-muted-foreground">
-                Real-time monitoring and early detection system
+                Real-time dengan Naive Bayes AI
               </p>
             </div>
             
-            {/* Status Indicator */}
-            <Card className="glass-card bg-card/40 backdrop-blur-lg border-border/50">
+            {/* Connection Status */}
+            <Card className="glass-card">
               <CardContent className="p-4">
                 <div className="flex items-center space-x-3">
                   <div className="relative">
                     {isConnected ? (
                       <>
-                        <div className="w-4 h-4 bg-accent rounded-full animate-ping absolute" />
-                        <div className="w-4 h-4 bg-accent rounded-full relative" />
+                        <div className="w-3 h-3 bg-green-400 rounded-full animate-ping absolute" />
+                        <div className="w-3 h-3 bg-green-400 rounded-full relative" />
                       </>
                     ) : (
-                      <div className="w-4 h-4 bg-destructive rounded-full" />
+                      <div className="w-3 h-3 bg-red-400 rounded-full" />
                     )}
                   </div>
                   <div>
                     <p className="text-sm font-medium">
+                      {isConnected ? 'Terhubung' : 'Terputus'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
                       {lastUpdate 
-                        ? `Last update: ${Math.floor((Date.now() - lastUpdate.getTime()) / 1000)} seconds ago`
-                        : 'No data received'
+                        ? `${Math.floor((Date.now() - lastUpdate.getTime()) / 1000)}s lalu`
+                        : 'Menunggu data...'
                       }
                     </p>
-                    <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                      {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                      <span>{isConnected ? 'Firebase connected' : 'Firebase disconnected'}</span>
-                    </div>
                   </div>
-                  
                   <Button 
                     variant="ghost" 
                     size="sm"
                     onClick={refresh}
                     disabled={loading}
-                    className="ml-2"
-                    data-testid="button-refresh-data"
                   >
                     <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                   </Button>
@@ -208,195 +176,205 @@ export default function Dashboard() {
           </Card>
         )}
 
-        {/* Real-time Parameter Cards */}
-        {currentData && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <ParameterCard
-              title="Temperature"
-              parameter={parameters.temperature}
-              progress={Math.min((currentData.suhu / 40) * 100, 100)}
-              animated={parameters.temperature?.status === 'normal'}
-            />
-            
-            <ParameterCard
-              title="Heart Rate"
-              parameter={parameters.heartRate}
-              progress={Math.min((currentData.bpm / 120) * 100, 100)}
-              animated={parameters.heartRate?.status === 'normal'}
-            />
-            
-            <ParameterCard
-              title="Blood Oxygen"
-              parameter={parameters.bloodOxygen}
-              progress={currentData.spo2}
-              animated={parameters.bloodOxygen?.status === 'normal'}
-            />
-            
-            <ParameterCard
-              title="Blood Pressure"
-              parameter={parameters.bloodPressure}
-              progress={Math.min((currentData.tekanan_sys / 160) * 100, 100)}
-              animated={parameters.bloodPressure?.status === 'normal'}
-            />
-          </div>
-        )}
-
-        {/* Classification Status & Naive Bayes Link */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {(currentData || enhancedClassification) && (
-            <div className="lg:col-span-2">
-              <ClassificationStatus
-                classification={enhancedClassification?.classification || currentData?.kondisi || 'Unknown'}
-                confidence={enhancedClassification?.confidence}
-                probabilities={enhancedClassification?.probabilities}
-              />
-            </div>
-          )}
-          
-          {/* Naive Bayes Analysis Link */}
-          <div className="space-y-4">
-            <Link href="/analysis">
-              <Card className="glass-card bg-gradient-to-br from-primary/10 to-accent/10 backdrop-blur-lg border-border/50 hover:from-primary/15 hover:to-accent/15 transition-all duration-300 cursor-pointer group">
-                <CardContent className="p-6 text-center">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Brain className="w-8 h-8 text-white" />
-                  </div>
-                  <h3 className="font-bold text-lg mb-2 text-foreground">Analisis Naive Bayes</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Lihat detail algoritma machine learning dan kontribusinya dalam penelitian
-                  </p>
-                  <Button className="w-full bg-gradient-to-r from-primary to-accent" data-testid="button-view-analysis">
-                    <BarChart3 className="w-4 h-4 mr-2" />
-                    Lihat Detail
-                  </Button>
-                </CardContent>
-              </Card>
-            </Link>
-            
-            {/* Quick Stats */}
-            <Card className="glass-card bg-card/40 backdrop-blur-lg border-border/50">
-              <CardContent className="p-4">
-                <h4 className="font-bold mb-3 flex items-center text-foreground">
-                  <TrendingUp className="w-4 h-4 mr-2 text-accent" />
-                  Model Stats
-                </h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Training Data</span>
-                    <span className="font-mono">26 sampel</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Features</span>
-                    <span className="font-mono">6 parameter</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Classes</span>
-                    <span className="font-mono">3 kategori</span>
-                  </div>
-                  {enhancedClassification && (
-                    <div className="flex justify-between pt-2 border-t border-border/30">
-                      <span className="text-muted-foreground">Confidence</span>
-                      <Badge variant={enhancedClassification.confidence > 0.7 ? "default" : "secondary"}>
-                        {(enhancedClassification.confidence * 100).toFixed(1)}%
-                      </Badge>
-                    </div>
-                  )}
+        {/* Firebase Test & Results - Clear Display */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Firebase Status & Test */}
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="flex items-center text-lg">
+                <Wifi className="w-5 h-5 mr-2 text-green-400" />
+                Status Firebase ESP32
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">Koneksi Database</span>
+                  <Badge variant={isConnected ? "default" : "destructive"}>
+                    {isConnected ? "AKTIF" : "PUTUS"}
+                  </Badge>
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">Data Masuk</span>
+                  <span className="text-sm font-mono">
+                    {historicalData.length} record
+                  </span>
+                </div>
+                <Button
+                  onClick={sendTestData}
+                  disabled={isSendingTest}
+                  className="w-full bg-gradient-to-r from-blue-500 to-cyan-500"
+                  data-testid="button-send-test-data"
+                >
+                  {isSendingTest ? (
+                    <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <TestTube className="w-4 h-4 mr-2" />
+                  )}
+                  {isSendingTest ? 'Mengirim...' : 'Test Data ESP32'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Naive Bayes Results */}
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="flex items-center text-lg">
+                <Brain className="w-5 h-5 mr-2 text-primary" />
+                Hasil Naive Bayes AI
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {enhancedClassification && currentData ? (
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <div className={`w-16 h-16 mx-auto mb-3 rounded-full flex items-center justify-center text-xl font-bold ${
+                      enhancedClassification.classification === 'Normal' 
+                        ? "bg-green-400/20 text-green-400" 
+                        : enhancedClassification.classification === 'Kurang Normal'
+                        ? "bg-yellow-400/20 text-yellow-400"
+                        : "bg-red-400/20 text-red-400"
+                    }`}>
+                      {enhancedClassification.classification === 'Normal' ? '✓' : '⚠'}
+                    </div>
+                    <h3 className="font-bold mb-1">{enhancedClassification.classification}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Akurasi: {(enhancedClassification.confidence * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    {Object.entries(enhancedClassification.probabilities).map(([label, prob]) => (
+                      <div key={label} className="text-center">
+                        <div className="font-mono font-bold">
+                          {((prob as number) * 100).toFixed(0)}%
+                        </div>
+                        <div className="text-muted-foreground truncate">
+                          {label === 'Normal' ? 'Normal' : 
+                           label === 'Kurang Normal' ? 'Kurang' : 'Bahaya'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Brain className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>Menunggu data untuk klasifikasi...</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Current Vital Signs - Compact */}
+        {currentData && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            {/* Temperature */}
+            <Card className="glass-card bg-gradient-to-br from-red-400/10 to-orange-400/10">
+              <CardContent className="p-4 text-center">
+                <Thermometer className="w-6 h-6 mx-auto mb-2 text-red-400" />
+                <div className="text-2xl font-bold text-red-400">
+                  {currentData.suhu}°C
+                </div>
+                <div className="text-xs text-muted-foreground">Suhu</div>
+              </CardContent>
+            </Card>
+
+            {/* Heart Rate */}
+            <Card className="glass-card bg-gradient-to-br from-red-500/10 to-pink-500/10">
+              <CardContent className="p-4 text-center">
+                <Heart className="w-6 h-6 mx-auto mb-2 text-red-500" fill="currentColor" />
+                <div className="text-2xl font-bold text-red-500">
+                  {currentData.bpm}
+                </div>
+                <div className="text-xs text-muted-foreground">BPM</div>
+              </CardContent>
+            </Card>
+
+            {/* SpO2 */}
+            <Card className="glass-card bg-gradient-to-br from-blue-400/10 to-cyan-400/10">
+              <CardContent className="p-4 text-center">
+                <Droplets className="w-6 h-6 mx-auto mb-2 text-blue-400" />
+                <div className="text-2xl font-bold text-blue-400">
+                  {currentData.spo2}%
+                </div>
+                <div className="text-xs text-muted-foreground">SpO2</div>
+              </CardContent>
+            </Card>
+
+            {/* Blood Pressure */}
+            <Card className="glass-card bg-gradient-to-br from-purple-400/10 to-indigo-400/10">
+              <CardContent className="p-4 text-center">
+                <Activity className="w-6 h-6 mx-auto mb-2 text-purple-400" />
+                <div className="text-lg font-bold text-purple-400">
+                  {currentData.tekanan_sys}/{currentData.tekanan_dia}
+                </div>
+                <div className="text-xs text-muted-foreground">mmHg</div>
               </CardContent>
             </Card>
           </div>
-        </div>
-
-        {/* Firebase Status */}
-        <div className="mb-8">
-          <FirebaseStatus 
-            isConnected={isConnected}
-            lastUpdate={lastUpdate}
-          />
-        </div>
+        )}
         
-        {/* Simple Charts - 4 separate charts */}
+        {/* Charts */}
         <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-4 flex items-center text-foreground">
-            <BarChart3 className="w-6 h-6 mr-2 text-primary" />
-            Grafik Real-time Parameter Jantung
+          <h2 className="text-xl font-bold mb-4 flex items-center">
+            <BarChart3 className="w-5 h-5 mr-2 text-primary" />
+            Grafik Real-time
           </h2>
           <SimpleCharts 
             data={historicalData} 
             currentData={currentData}
           />
         </div>
-        
-        {/* Current Status Display - Simplified */}
-        {currentData && (
-          <Card className="glass-card bg-card/40 backdrop-blur-lg border-border/50 mb-8">
-            <CardContent className="p-6">
-              <h3 className="text-xl font-bold mb-4 flex items-center text-foreground">
-                <Activity className="w-5 h-5 mr-2 text-accent" />
-                Status Real-time ESP32
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center">
-                  <div className="w-20 h-20 mx-auto mb-2 relative">
-                    <div className="w-full h-full bg-gradient-to-br from-red-400/20 to-orange-400/40 rounded-full flex items-center justify-center border-4 border-red-400/30">
-                      <span className="text-base font-bold font-mono text-red-400">
-                        {currentData.suhu}°
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground font-medium">Suhu</p>
-                </div>
-                
-                <div className="text-center">
-                  <div className="w-20 h-20 mx-auto mb-2 relative">
-                    <div className="w-full h-full bg-gradient-to-br from-accent/20 to-accent/40 rounded-full flex items-center justify-center border-4 border-accent/30">
-                      <span className="text-base font-bold font-mono text-accent">
-                        {currentData.bpm}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground font-medium">BPM</p>
-                </div>
-                
-                <div className="text-center">
-                  <div className="w-20 h-20 mx-auto mb-2 relative">
-                    <div className="w-full h-full bg-gradient-to-br from-blue-400/20 to-cyan-400/40 rounded-full flex items-center justify-center border-4 border-blue-400/30">
-                      <span className="text-base font-bold font-mono text-blue-400">
-                        {currentData.spo2}%
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground font-medium">SpO2</p>
-                </div>
-                
-                <div className="text-center">
-                  <div className="w-20 h-20 mx-auto mb-2 relative">
-                    <div className="w-full h-full bg-gradient-to-br from-purple-400/20 to-indigo-400/40 rounded-full flex items-center justify-center border-4 border-purple-400/30">
-                      <span className="text-sm font-bold font-mono text-purple-400">
-                        {currentData.tekanan_sys}/{currentData.tekanan_dia}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground font-medium">BP</p>
-                </div>
-              </div>
-              
-              <div className="mt-4 pt-4 border-t border-border/30 flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Signal Quality:</span>
-                <Badge 
-                  variant={currentData.signal_quality >= 80 ? "default" : 
-                          currentData.signal_quality >= 60 ? "secondary" : "destructive"}
-                  className="font-mono"
-                >
-                  {currentData.signal_quality}%
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
-        {/* Data History Table */}
-        <DataHistoryTable data={historicalData} />
+        {/* Historical Data - Simplified */}
+        <Card className="glass-card mb-8">
+          <CardHeader>
+            <CardTitle className="text-lg">Data Terakhir</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3 max-h-60 overflow-y-auto">
+              {historicalData.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  Belum ada data. Kirim test data atau hubungkan ESP32.
+                </p>
+              ) : (
+                historicalData.slice(0, 5).map((item, index) => (
+                  <div 
+                    key={item.id}
+                    className="flex items-center justify-between p-3 bg-background/50 rounded-lg"
+                  >
+                    <div>
+                      <p className="font-mono text-sm">
+                        {new Date(item.timestamp).toLocaleString('id-ID', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit'
+                        })}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.suhu}°C • {item.bpm}BPM • {item.spo2}% • {item.tekanan_sys}/{item.tekanan_dia}
+                      </p>
+                    </div>
+                    <Badge 
+                      variant={
+                        item.kondisi === 'Normal' ? 'default' :
+                        item.kondisi === 'Kurang Normal' ? 'secondary' : 'destructive'
+                      }
+                      className="text-xs"
+                    >
+                      {item.kondisi}
+                    </Badge>
+                  </div>
+                ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Notification System */}
@@ -405,13 +383,12 @@ export default function Dashboard() {
         onClose={removeNotification}
       />
 
-      {/* Floating Action Button - Home */}
+      {/* Back to Home */}
       <Link href="/">
         <Button
-          className="fixed bottom-6 left-6 w-14 h-14 bg-gradient-to-br from-primary to-accent rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-110 z-40 group border-0"
-          data-testid="button-back-to-home"
+          className="fixed bottom-6 left-6 w-14 h-14 bg-gradient-to-br from-primary to-accent rounded-full shadow-xl z-40"
         >
-          <Home className="w-6 h-6 text-white group-hover:scale-110 transition-transform" />
+          <Home className="w-6 h-6 text-white" />
         </Button>
       </Link>
     </div>
