@@ -415,7 +415,11 @@ void ukurDetakJantung() {
       lcd.setCursor(0, 2);
       lcd.print("Waktu: " + String(detik) + "/30s");
       lcd.setCursor(0, 3);
-      lcd.print("Status: " + (detakTerdeteksi > 5 ? "Baik" : "Estimasi"));
+      if (detakTerdeteksi > 5) {
+        lcd.print("Status: Baik");
+      } else {
+        lcd.print("Status: Estimasi");
+      }
     }
     
     delay(50);
@@ -504,7 +508,11 @@ void ukurKadarOksigen() {
       lcd.setCursor(0, 2);
       lcd.print("Waktu: " + String(detik) + "/30s");
       lcd.setCursor(0, 3);
-      lcd.print("Status: " + (bacaanValid > 5 ? "Baik" : "Estimasi"));
+      if (bacaanValid > 5) {
+        lcd.print("Status: Baik");
+      } else {
+        lcd.print("Status: Estimasi");
+      }
     }
     
     delay(100);
