@@ -191,8 +191,10 @@ void setupFirebase() {
     lcd.setCursor(0, 3);
     lcd.print("Firebase: OK       ");
     
-    // Clean up test data
-    http.DELETE();
+    // Clean up test data - remove test node
+    http.end();
+    http.begin(testUrl);
+    int deleteCode = http.sendRequest("DELETE");
     
   } else {
     firebaseReady = false;
@@ -471,9 +473,9 @@ String getHealthStatus() {
   bool spo2OK = (spo2_final >= 95);
   bool bpOK = (hexSys >= 90 && hexSys <= 140 && hexDias >= 60 && hexDias <= 90);
   
-  if (tempOK && bmpOK && spo2OK && bpOK) {
+  if (tempOK && bpmOK && spo2OK && bpOK) {
     return "Normal";
-  } else if ((suhu < 35.0 || suhu > 39.0) || (bmp_final < 50 || bmp_final > 120) || 
+  } else if ((suhu < 35.0 || suhu > 39.0) || (bpm_final < 50 || bpm_final > 120) || 
              (spo2_final < 90) || (hexSys > 160 || hexDias > 100)) {
     return "Berbahaya";
   } else {
