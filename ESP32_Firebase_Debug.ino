@@ -98,8 +98,8 @@ void setupFirebase() {
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
   
-  // Tambahkan callback untuk debugging
-  config.token_status_callback = tokenStatusCallback;
+  // Skip callback untuk menghindari compatibility issues
+  config.token_status_callback = nullptr;
   
   Serial.println("Initializing Firebase...");
   
@@ -134,18 +134,7 @@ void setupFirebase() {
   }
 }
 
-void tokenStatusCallback(TokenInfo info) {
-  Serial.println("Token Status: " + String(info.status));
-  if (info.type == token_type_id_token) {
-    Serial.println("ID Token ready");
-  } else if (info.type == token_type_access_token) {
-    Serial.println("Access Token ready");
-  }
-  
-  if (info.error.message.length() > 0) {
-    Serial.println("Token Error: " + info.error.message);
-  }
-}
+// Callback function dihapus karena compatibility issues
 
 void testFirebaseWrite() {
   Serial.println("\n--- Testing Firebase Write ---");
