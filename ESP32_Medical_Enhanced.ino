@@ -412,7 +412,7 @@ void ukurBPMEnhanced() {
           bpmReadings[bpmIndex] = (int)beatsPerMinute;
           bpmIndex = (bpmIndex + 1) % BPM_MIN_SAMPLES;
           
-          if (bmpValidCount < BPM_MIN_SAMPLES) {
+          if (bpmValidCount < BPM_MIN_SAMPLES) {
             bpmValidCount++;
           }
           
@@ -421,10 +421,10 @@ void ukurBPMEnhanced() {
           
           // Calculate moving average
           int sum = 0;
-          for (int i = 0; i < bmpValidCount; i++) {
-            sum += bmpReadings[i];
+          for (int i = 0; i < bpmValidCount; i++) {
+            sum += bpmReadings[i];
           }
-          bmp_final = sum / bmpValidCount;
+          bpm_final = sum / bpmValidCount;
           
           Serial.println("Valid beat: " + String((int)beatsPerMinute) + " BPM, Avg: " + String(bpm_final));
         }
@@ -438,9 +438,9 @@ void ukurBPMEnhanced() {
       
       lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print("BPM: " + String(bmp_final));
+      lcd.print("BPM: " + String(bpm_final));
       lcd.setCursor(0, 1);
-      lcd.print("Samples: " + String(bmpValidCount) + "/" + String(BPM_MIN_SAMPLES));
+      lcd.print("Samples: " + String(bpmValidCount) + "/" + String(BPM_MIN_SAMPLES));
       lcd.setCursor(0, 2);
       lcd.print("Quality: " + String(totalBPMReadings) + " beats");
       lcd.setCursor(0, 3);
@@ -634,7 +634,7 @@ void bacaTekananDarahEnhanced() {
     // Gunakan algoritma estimasi berdasarkan age dan fitness
     hexSys = estimateSystolic();
     hexDias = estimateDiastolic();  
-    hexBPM = bmp_final; // Gunakan BPM yang akurat dari sensor
+    hexBPM = bpm_final; // Gunakan BPM yang akurat dari sensor
     
     Serial.println("Enhanced fallback used:");
     Serial.println("Estimated SYS: " + String(hexSys));
@@ -784,7 +784,7 @@ int calculateQualityScore() {
   else quality += 5;
   
   // Sensor stability (25 points)
-  if (bmpValidCount >= BPM_MIN_SAMPLES && spo2ValidCount >= SPO2_MIN_SAMPLES) {
+  if (bpmValidCount >= BPM_MIN_SAMPLES && spo2ValidCount >= SPO2_MIN_SAMPLES) {
     quality += 25;
   } else {
     quality += 10;
