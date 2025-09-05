@@ -10,7 +10,10 @@ import {
   Droplets,
   Wifi,
   WifiOff,
-  RefreshCw
+  RefreshCw,
+  Brain,
+  BarChart3,
+  TrendingUp
 } from "lucide-react";
 import { Link } from "wouter";
 import { ParameterCard } from "@/components/parameter-card";
@@ -231,15 +234,71 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Classification Status */}
-        {(currentData || enhancedClassification) && (
-          <ClassificationStatus
-            classification={enhancedClassification?.classification || currentData?.kondisi || 'Unknown'}
-            confidence={enhancedClassification?.confidence}
-            probabilities={enhancedClassification?.probabilities}
-            className="mb-8"
-          />
-        )}
+        {/* Classification Status & Naive Bayes Link */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          {(currentData || enhancedClassification) && (
+            <div className="lg:col-span-2">
+              <ClassificationStatus
+                classification={enhancedClassification?.classification || currentData?.kondisi || 'Unknown'}
+                confidence={enhancedClassification?.confidence}
+                probabilities={enhancedClassification?.probabilities}
+              />
+            </div>
+          )}
+          
+          {/* Naive Bayes Analysis Link */}
+          <div className="space-y-4">
+            <Link href="/analysis">
+              <Card className="glass-card bg-gradient-to-br from-primary/10 to-accent/10 backdrop-blur-lg border-border/50 hover:from-primary/15 hover:to-accent/15 transition-all duration-300 cursor-pointer group">
+                <CardContent className="p-6 text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Brain className="w-8 h-8 text-white" />
+                  </div>
+                  <h3 className="font-bold text-lg mb-2 text-foreground">Analisis Naive Bayes</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Lihat detail algoritma machine learning dan kontribusinya dalam penelitian
+                  </p>
+                  <Button className="w-full bg-gradient-to-r from-primary to-accent" data-testid="button-view-analysis">
+                    <BarChart3 className="w-4 h-4 mr-2" />
+                    Lihat Detail
+                  </Button>
+                </CardContent>
+              </Card>
+            </Link>
+            
+            {/* Quick Stats */}
+            <Card className="glass-card bg-card/40 backdrop-blur-lg border-border/50">
+              <CardContent className="p-4">
+                <h4 className="font-bold mb-3 flex items-center text-foreground">
+                  <TrendingUp className="w-4 h-4 mr-2 text-accent" />
+                  Model Stats
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Training Data</span>
+                    <span className="font-mono">26 sampel</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Features</span>
+                    <span className="font-mono">6 parameter</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Classes</span>
+                    <span className="font-mono">3 kategori</span>
+                  </div>
+                  {enhancedClassification && (
+                    <div className="flex justify-between pt-2 border-t border-border/30">
+                      <span className="text-muted-foreground">Confidence</span>
+                      <Badge variant={enhancedClassification.confidence > 0.7 ? "default" : "secondary"}>
+                        {(enhancedClassification.confidence * 100).toFixed(1)}%
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
 
         {/* Charts and History */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">

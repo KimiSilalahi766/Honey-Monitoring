@@ -1,7 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { z } from "zod";
-import { classificationRequestSchema, classificationResponseSchema } from "@shared/schema";
+import { classificationRequestSchema, classificationResponseSchema, heartMonitoringData, insertHeartMonitoringDataSchema } from "@shared/schema";
+import { db } from "./db";
+import { desc, count, avg, eq } from "drizzle-orm";
 
 // Simple Naive Bayes implementation for server-side classification
 interface TrainingExample {
@@ -162,6 +164,119 @@ const trainingExamples: TrainingExample[] = [
 classifier.train(trainingExamples);
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Store heart monitoring data
+  app.post('/api/heart-data', async (req, res) => {
+    try {
+      const validatedData = insertHeartMonitoringDataSchema.parse(req.body);
+      
+      // Get Naive Bayes classification if not provided
+      let nbClassification = validatedData.nb_classification;
+      let nbConfidence = validatedData.nb_confidence;
+      
+      if (!nbClassification) {
+        const features = [
+          validatedData.suhu,
+          validatedData.bpm,
+          validatedData.spo2,
+          validatedData.tekanan_sys,
+          validatedData.tekanan_dia,
+          validatedData.signal_quality
+        ];
+        
+        const result = classifier.predict(features);
+        nbClassification = result.classification;
+        nbConfidence = result.confidence;
+      }
+      
+      const [newRecord] = await db.insert(heartMonitoringData)
+        .values({
+          ...validatedData,
+          nb_classification: nbClassification,
+          nb_confidence: nbConfidence
+        })
+        .returning();
+      
+      res.json({
+        success: true,
+        data: newRecord,
+        classification: {
+          classification: nbClassification,
+          confidence: nbConfidence
+        }
+      });
+    } catch (error) {
+      console.error('Error storing heart data:', error);
+      res.status(500).json({ error: 'Failed to store data' });
+    }
+  });
+
+  // Get historical data
+  app.get('/api/heart-data', async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      
+      const data = await db.select()
+        .from(heartMonitoringData)
+        .orderBy(desc(heartMonitoringData.created_at))
+        .limit(limit)
+        .offset(offset);
+      
+      res.json({
+        success: true,
+        data,
+        total: data.length
+      });
+    } catch (error) {
+      console.error('Error fetching heart data:', error);
+      res.status(500).json({ error: 'Failed to fetch data' });
+    }
+  });
+
+  // Get analytics
+  app.get('/api/analytics', async (req, res) => {
+    try {
+      const [totalRecords] = await db.select({ count: count() })
+        .from(heartMonitoringData);
+      
+      const [avgMetrics] = await db.select({
+        avg_suhu: avg(heartMonitoringData.suhu),
+        avg_bpm: avg(heartMonitoringData.bpm),
+        avg_spo2: avg(heartMonitoringData.spo2),
+        avg_sys: avg(heartMonitoringData.tekanan_sys),
+        avg_dia: avg(heartMonitoringData.tekanan_dia)
+      }).from(heartMonitoringData);
+      
+      const normalCount = await db.select({ count: count() })
+        .from(heartMonitoringData)
+        .where(eq(heartMonitoringData.nb_classification, 'Normal'));
+      
+      const kurangNormalCount = await db.select({ count: count() })
+        .from(heartMonitoringData)
+        .where(eq(heartMonitoringData.nb_classification, 'Kurang Normal'));
+      
+      const berbahayaCount = await db.select({ count: count() })
+        .from(heartMonitoringData)
+        .where(eq(heartMonitoringData.nb_classification, 'Berbahaya'));
+      
+      res.json({
+        success: true,
+        analytics: {
+          total_records: totalRecords.count,
+          averages: avgMetrics,
+          classification_distribution: {
+            Normal: normalCount[0]?.count || 0,
+            'Kurang Normal': kurangNormalCount[0]?.count || 0,
+            Berbahaya: berbahayaCount[0]?.count || 0
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+      res.status(500).json({ error: 'Failed to fetch analytics' });
+    }
+  });
+
   // Classification API endpoint
   app.post("/api/classify", async (req, res) => {
     try {
@@ -207,6 +322,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // Seed database with sample data (development)
+  app.post("/api/seed-data", async (_req, res) => {
+    try {
+      const sampleData = [
+        {
+          device_id: 'ESP32_Monitor_Jantung',
+          suhu: 36.8,
+          bpm: 78,
+          spo2: 98,
+          tekanan_sys: 105, // After calibration (-15)
+          tekanan_dia: 70,  // After calibration (-10)
+          signal_quality: 85,
+          kondisi: 'Normal',
+          nb_classification: 'Normal',
+          nb_confidence: 0.92
+        },
+        {
+          device_id: 'ESP32_Monitor_Jantung',
+          suhu: 37.6,
+          bpm: 105,
+          spo2: 94,
+          tekanan_sys: 120,
+          tekanan_dia: 85,
+          signal_quality: 78,
+          kondisi: 'Kurang Normal',
+          nb_classification: 'Kurang Normal',
+          nb_confidence: 0.76
+        },
+        {
+          device_id: 'ESP32_Monitor_Jantung',
+          suhu: 38.9,
+          bpm: 125,
+          spo2: 89,
+          tekanan_sys: 140,
+          tekanan_dia: 95,
+          signal_quality: 65,
+          kondisi: 'Berbahaya',
+          nb_classification: 'Berbahaya',
+          nb_confidence: 0.88
+        }
+      ];
+      
+      const results = await db.insert(heartMonitoringData).values(sampleData).returning();
+      
+      res.json({
+        success: true,
+        message: `Seeded ${results.length} records`,
+        data: results
+      });
+    } catch (error) {
+      console.error('Error seeding data:', error);
+      res.status(500).json({ error: 'Failed to seed data' });
+    }
+  });
+  
   // Firebase test endpoint (for development)
   app.get("/api/test-data", (_req, res) => {
     // This endpoint can be used to test the system without actual ESP32 data
@@ -215,8 +385,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       suhu: 36.8,
       bpm: 78,
       spo2: 98,
-      tekanan_sys: 120,
-      tekanan_dia: 80,
+      tekanan_sys: 105, // After medical calibration
+      tekanan_dia: 70,  // After medical calibration
       signal_quality: 85,
       kondisi: "Normal"
     };

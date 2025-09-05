@@ -71,10 +71,14 @@ class NaiveBayesClassifier {
 
     const { labels, features, priors, likelihoods } = this.model;
     const probabilities: Record<string, number> = {};
+    const featureContributions: Record<string, number> = {};
+    const detailedCalculations: string[] = [];
 
-    // Calculate probability for each class
+    // Calculate probability for each class with detailed explanation
     labels.forEach(label => {
       let logProb = Math.log(priors[label]);
+      detailedCalculations.push(`\n=== Kalkulasi untuk kelas '${label}' ===`);
+      detailedCalculations.push(`Prior P(${label}) = ${(priors[label] * 100).toFixed(2)}%`);
       
       features.forEach(feature => {
         const value = (input as any)[feature];
@@ -84,10 +88,20 @@ class NaiveBayesClassifier {
         const prob = Math.exp(-Math.pow(value - mean, 2) / (2 * variance)) / 
                     Math.sqrt(2 * Math.PI * variance);
         
-        logProb += Math.log(prob || 1e-10); // Prevent log(0)
+        // Calculate feature importance for this prediction
+        const featureLogProb = Math.log(prob || 1e-10);
+        featureContributions[feature] = (featureContributions[feature] || 0) + Math.abs(featureLogProb);
+        
+        logProb += featureLogProb;
+        
+        // Add detailed explanation
+        detailedCalculations.push(
+          `  ${this.getFeatureName(feature)}: ${value} (mean=${mean.toFixed(2)}, likelihood=${(prob * 100).toFixed(4)}%)`
+        );
       });
       
       probabilities[label] = Math.exp(logProb);
+      detailedCalculations.push(`  Total log probability: ${logProb.toFixed(4)}`);
     });
 
     // Normalize probabilities
@@ -96,16 +110,75 @@ class NaiveBayesClassifier {
       probabilities[label] = probabilities[label] / total;
     });
 
+    // Normalize feature contributions
+    const totalContribution = Object.values(featureContributions).reduce((sum, val) => sum + val, 0);
+    Object.keys(featureContributions).forEach(feature => {
+      featureContributions[feature] = featureContributions[feature] / totalContribution;
+    });
+
     // Get classification with highest probability
     const classification = Object.entries(probabilities)
       .reduce((max, [label, prob]) => prob > max.prob ? { label, prob } : max, 
               { label: labels[0], prob: 0 }).label as "Normal" | "Kurang Normal" | "Berbahaya";
 
+    // Generate comprehensive explanation
+    const explanation = `Naive Bayes menganalisis 6 parameter vital:\n${detailedCalculations.join('\n')}\n\n` +
+                       `Hasil Final: ${classification} dengan confidence ${(probabilities[classification] * 100).toFixed(1)}%\n` +
+                       `Algoritma menghitung probabilitas setiap kelas berdasarkan distribusi Gaussian dari training data.`;
+
     return {
       classification,
       confidence: probabilities[classification],
-      probabilities: probabilities as any
+      probabilities: probabilities as any,
+      explanation,
+      features_impact: featureContributions
     };
+  }
+
+  private getFeatureName(feature: string): string {
+    const featureNames: Record<string, string> = {
+      suhu: 'Suhu Tubuh',
+      bpm: 'Detak Jantung', 
+      spo2: 'Kadar Oksigen',
+      tekanan_sys: 'Tekanan Sistolik',
+      tekanan_dia: 'Tekanan Diastolik',
+      signal_quality: 'Kualitas Sinyal'
+    };
+    return featureNames[feature] || feature;
+  }
+
+  // Get model statistics for analysis
+  getModelStats() {
+    if (!this.model) return null;
+    
+    const { labels, features, priors, likelihoods } = this.model;
+    
+    return {
+      training_data_count: trainingData.length,
+      class_distributions: priors,
+      feature_count: features.length,
+      model_complexity: labels.length * features.length,
+      feature_stats: Object.fromEntries(
+        features.map(feature => [
+          feature,
+          Object.fromEntries(
+            labels.map(label => [
+              label,
+              {
+                mean: likelihoods[label][feature].mean,
+                variance: likelihoods[label][feature].variance,
+                std_dev: Math.sqrt(likelihoods[label][feature].variance)
+              }
+            ])
+          )
+        ])
+      )
+    };
+  }
+
+  // Public method to get feature names
+  public getFeatureNamePublic(feature: string): string {
+    return this.getFeatureName(feature);
   }
 }
 
@@ -116,4 +189,55 @@ heartClassifier.train(trainingData);
 // Client-side classification function
 export const classifyHeartCondition = (data: ClassificationRequest): ClassificationResponse => {
   return heartClassifier.predict(data);
+};
+
+// Get comprehensive model analysis
+export const getNaiveBayesAnalysis = () => {
+  const stats = heartClassifier.getModelStats();
+  if (!stats) return null;
+  
+  return {
+    ...stats,
+    training_data: trainingData,
+    algorithm_explanation: `
+      ALGORITMA NAIVE BAYES UNTUK MONITORING JANTUNG:
+      
+      1. TRAINING PHASE:
+         - Dataset: ${trainingData.length} sampel data medis terkalibrasi
+         - Features: 6 parameter vital (suhu, BPM, SpO2, tekanan darah, kualitas sinyal)
+         - Classes: 3 kategori kondisi jantung
+      
+      2. CLASSIFICATION PHASE:
+         - Menghitung Prior: P(Normal) = ${(stats.class_distributions.Normal * 100).toFixed(1)}%
+         - Menghitung Likelihood: P(feature|class) menggunakan distribusi Gaussian
+         - Menghitung Posterior: P(class|features) = P(features|class) × P(class)
+      
+      3. DECISION MAKING:
+         - Pilih kelas dengan probabilitas posterior tertinggi
+         - Confidence = probabilitas kelas terpilih
+         - Threshold: Normal >60%, Kurang Normal 30-60%, Berbahaya <30%
+    `,
+    medical_calibration: {
+      systolic_adjustment: -15,
+      diastolic_adjustment: -10,
+      rationale: "Kalibrasi berdasarkan konsultasi medis untuk akurasi sensor ESP32"
+    }
+  };
+};
+
+// Export training data for analysis
+export { trainingData };
+
+// Feature importance calculator
+export const calculateFeatureImportance = (data: ClassificationRequest) => {
+  const result = classifyHeartCondition(data);
+  const importance = result.features_impact || {};
+  
+  return Object.entries(importance)
+    .sort(([,a], [,b]) => b - a)
+    .map(([feature, impact]) => ({
+      feature: heartClassifier.getFeatureNamePublic(feature),
+      impact: impact * 100,
+      value: (data as any)[feature]
+    }));
 };

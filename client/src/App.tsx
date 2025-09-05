@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Moon, Sun, Heart, Wifi } from "lucide-react";
 import Home from "@/pages/home";
 import Dashboard from "@/pages/dashboard";
+import Analysis from "@/pages/analysis";
 import NotFound from "@/pages/not-found";
 
 function Navigation() {
@@ -63,6 +64,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/dashboard" component={Dashboard} />
+      <Route path="/analysis" component={Analysis} />
       <Route component={NotFound} />
     </Switch>
   );
