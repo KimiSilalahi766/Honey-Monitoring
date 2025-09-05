@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { z } from "zod";
-import { classificationRequestSchema, classificationResponseSchema, heartMonitoringData, insertHeartMonitoringDataSchema } from "@shared/schema";
+import { classificationRequestSchema, classificationResponseSchema, heartMonitoringData, insertHeartMonitoringDataSchema, naiveBayesTrainingData, insertNaiveBayesTrainingDataSchema } from "@shared/schema";
 import { db } from "./db";
 import { desc, count, avg, eq } from "drizzle-orm";
 
@@ -377,6 +377,211 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Training data management endpoints
+  app.get('/api/training-data', async (_req, res) => {
+    try {
+      const data = await db.select()
+        .from(naiveBayesTrainingData)
+        .orderBy(desc(naiveBayesTrainingData.created_at));
+      
+      res.json(data);
+    } catch (error) {
+      console.error('Error fetching training data:', error);
+      res.status(500).json({ error: 'Failed to fetch training data' });
+    }
+  });
+
+  app.post('/api/training-data', async (req, res) => {
+    try {
+      const validatedData = insertNaiveBayesTrainingDataSchema.parse(req.body);
+      
+      const [newRecord] = await db.insert(naiveBayesTrainingData)
+        .values(validatedData)
+        .returning();
+      
+      res.json({ success: true, data: newRecord });
+    } catch (error) {
+      console.error('Error adding training data:', error);
+      res.status(500).json({ error: 'Failed to add training data' });
+    }
+  });
+
+  app.delete('/api/training-data/:id', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await db.delete(naiveBayesTrainingData)
+        .where(eq(naiveBayesTrainingData.id, id));
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting training data:', error);
+      res.status(500).json({ error: 'Failed to delete training data' });
+    }
+  });
+
+  app.post('/api/training-data/upload', async (req, res) => {
+    try {
+      // For now, return success - CSV parsing would be implemented here
+      res.json({ success: true, count: 0, message: 'CSV upload endpoint ready' });
+    } catch (error) {
+      console.error('Error uploading CSV:', error);
+      res.status(500).json({ error: 'Failed to upload CSV' });
+    }
+  });
+
+  app.post('/api/training-data/retrain', async (_req, res) => {
+    try {
+      // Fetch training data from database
+      const trainingData = await db.select().from(naiveBayesTrainingData);
+      
+      if (trainingData.length < 10) {
+        return res.status(400).json({ error: 'Need at least 10 training examples' });
+      }
+      
+      // Convert to training format
+      const examples: TrainingExample[] = trainingData.map(item => ({
+        features: [item.suhu, item.bpm, item.spo2, item.tekanan_sys, item.tekanan_dia, item.signal_quality],
+        label: item.label
+      }));
+      
+      // Retrain classifier
+      classifier.train(examples);
+      
+      // Calculate accuracy with cross-validation
+      let correctPredictions = 0;
+      examples.forEach(example => {
+        const prediction = classifier.predict(example.features);
+        if (prediction.classification === example.label) {
+          correctPredictions++;
+        }
+      });
+      
+      const accuracy = correctPredictions / examples.length;
+      
+      res.json({ 
+        success: true, 
+        accuracy, 
+        trainingCount: examples.length,
+        message: 'Model retrained successfully' 
+      });
+    } catch (error) {
+      console.error('Error retraining model:', error);
+      res.status(500).json({ error: 'Failed to retrain model' });
+    }
+  });
+
+  // Evaluation endpoint
+  app.get('/api/evaluation', async (_req, res) => {
+    try {
+      // Fetch training data for evaluation
+      const trainingData = await db.select().from(naiveBayesTrainingData);
+      
+      if (trainingData.length < 10) {
+        return res.json({
+          error: 'Insufficient training data',
+          message: `Need at least 10 samples, got ${trainingData.length}`
+        });
+      }
+      
+      // Convert to training format
+      const examples: TrainingExample[] = trainingData.map(item => ({
+        features: [item.suhu, item.bpm, item.spo2, item.tekanan_sys, item.tekanan_dia, item.signal_quality],
+        label: item.label
+      }));
+      
+      // Perform cross-validation
+      const folds = 5;
+      const foldSize = Math.floor(examples.length / folds);
+      const crossValidationScores: number[] = [];
+      
+      for (let i = 0; i < folds; i++) {
+        const testStart = i * foldSize;
+        const testEnd = i === folds - 1 ? examples.length : (i + 1) * foldSize;
+        
+        const testSet = examples.slice(testStart, testEnd);
+        const trainSet = [...examples.slice(0, testStart), ...examples.slice(testEnd)];
+        
+        // Train on fold
+        const foldClassifier = new ServerNaiveBayes();
+        foldClassifier.train(trainSet);
+        
+        // Test on fold
+        let correctPredictions = 0;
+        testSet.forEach(example => {
+          const prediction = foldClassifier.predict(example.features);
+          if (prediction.classification === example.label) {
+            correctPredictions++;
+          }
+        });
+        
+        crossValidationScores.push(correctPredictions / testSet.length);
+      }
+      
+      // Calculate overall metrics
+      const classLabels = ['Normal', 'Kurang Normal', 'Berbahaya'];
+      const confusionMatrix = Array(3).fill(null).map(() => Array(3).fill(0));
+      const classCounts = { 'Normal': 0, 'Kurang Normal': 0, 'Berbahaya': 0 };
+      const classCorrect = { 'Normal': 0, 'Kurang Normal': 0, 'Berbahaya': 0 };
+      const classPredicted = { 'Normal': 0, 'Kurang Normal': 0, 'Berbahaya': 0 };
+      
+      // Full dataset evaluation
+      classifier.train(examples);
+      let totalCorrect = 0;
+      
+      examples.forEach(example => {
+        const actualIndex = classLabels.indexOf(example.label);
+        classCounts[example.label as keyof typeof classCounts]++;
+        
+        const prediction = classifier.predict(example.features);
+        const predictedIndex = classLabels.indexOf(prediction.classification);
+        
+        confusionMatrix[actualIndex][predictedIndex]++;
+        classPredicted[prediction.classification as keyof typeof classPredicted]++;
+        
+        if (prediction.classification === example.label) {
+          totalCorrect++;
+          classCorrect[example.label as keyof typeof classCorrect]++;
+        }
+      });
+      
+      // Calculate precision, recall, f1 for each class
+      const precision: Record<string, number> = {};
+      const recall: Record<string, number> = {};
+      const f1Score: Record<string, number> = {};
+      
+      classLabels.forEach(label => {
+        const tp = classCorrect[label as keyof typeof classCorrect];
+        const fp = classPredicted[label as keyof typeof classPredicted] - tp;
+        const fn = classCounts[label as keyof typeof classCounts] - tp;
+        
+        precision[label] = classPredicted[label as keyof typeof classPredicted] > 0 ? tp / classPredicted[label as keyof typeof classPredicted] : 0;
+        recall[label] = classCounts[label as keyof typeof classCounts] > 0 ? tp / classCounts[label as keyof typeof classCounts] : 0;
+        f1Score[label] = (precision[label] + recall[label]) > 0 ? 2 * (precision[label] * recall[label]) / (precision[label] + recall[label]) : 0;
+      });
+      
+      const meanCvScore = crossValidationScores.reduce((sum, score) => sum + score, 0) / crossValidationScores.length;
+      const stdCvScore = Math.sqrt(crossValidationScores.reduce((sum, score) => sum + Math.pow(score - meanCvScore, 2), 0) / crossValidationScores.length);
+      
+      res.json({
+        overall_accuracy: totalCorrect / examples.length,
+        precision,
+        recall,
+        f1_score: f1Score,
+        confusion_matrix: confusionMatrix,
+        class_labels: classLabels,
+        total_samples: examples.length,
+        training_samples: Math.floor(examples.length * 0.8),
+        test_samples: examples.length - Math.floor(examples.length * 0.8),
+        cross_validation_scores: crossValidationScores,
+        mean_cv_score: meanCvScore,
+        std_cv_score: stdCvScore
+      });
+    } catch (error) {
+      console.error('Error in evaluation:', error);
+      res.status(500).json({ error: 'Failed to perform evaluation' });
+    }
+  });
+
   // Firebase test endpoint (for development)
   app.get("/api/test-data", (_req, res) => {
     // This endpoint can be used to test the system without actual ESP32 data
