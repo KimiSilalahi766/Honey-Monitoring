@@ -269,48 +269,108 @@ export default function Dashboard() {
 
         {/* Current Vital Signs - Compact */}
         {currentData && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            {/* Temperature */}
-            <Card className="glass-card bg-gradient-to-br from-red-400/10 to-orange-400/10">
-              <CardContent className="p-4 text-center">
-                <Thermometer className="w-6 h-6 mx-auto mb-2 text-red-400" />
-                <div className="text-2xl font-bold text-red-400">
-                  {currentData.suhu}°C
-                </div>
-                <div className="text-xs text-muted-foreground">Suhu</div>
-              </CardContent>
-            </Card>
+          <div className="space-y-6 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Temperature */}
+              <Card className="glass-card bg-gradient-to-br from-red-400/10 to-orange-400/10">
+                <CardContent className="p-4 text-center">
+                  <Thermometer className="w-6 h-6 mx-auto mb-2 text-red-400" />
+                  <div className="text-2xl font-bold text-red-400">
+                    {currentData.suhu}°C
+                  </div>
+                  <div className="text-xs text-muted-foreground">Suhu Tubuh</div>
+                </CardContent>
+              </Card>
 
-            {/* Heart Rate */}
-            <Card className="glass-card bg-gradient-to-br from-red-500/10 to-pink-500/10">
-              <CardContent className="p-4 text-center">
-                <Heart className="w-6 h-6 mx-auto mb-2 text-red-500" fill="currentColor" />
-                <div className="text-2xl font-bold text-red-500">
-                  {currentData.bpm}
-                </div>
-                <div className="text-xs text-muted-foreground">BPM</div>
-              </CardContent>
-            </Card>
+              {/* Heart Rate */}
+              <Card className="glass-card bg-gradient-to-br from-red-500/10 to-pink-500/10">
+                <CardContent className="p-4 text-center">
+                  <Heart className="w-6 h-6 mx-auto mb-2 text-red-500" fill="currentColor" />
+                  <div className="text-2xl font-bold text-red-500">
+                    {currentData.bpm}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Denyut Jantung</div>
+                </CardContent>
+              </Card>
 
-            {/* SpO2 */}
-            <Card className="glass-card bg-gradient-to-br from-blue-400/10 to-cyan-400/10">
-              <CardContent className="p-4 text-center">
-                <Droplets className="w-6 h-6 mx-auto mb-2 text-blue-400" />
-                <div className="text-2xl font-bold text-blue-400">
-                  {currentData.spo2}%
-                </div>
-                <div className="text-xs text-muted-foreground">SpO2</div>
-              </CardContent>
-            </Card>
+              {/* SpO2 */}
+              <Card className="glass-card bg-gradient-to-br from-blue-400/10 to-cyan-400/10">
+                <CardContent className="p-4 text-center">
+                  <Droplets className="w-6 h-6 mx-auto mb-2 text-blue-400" />
+                  <div className="text-2xl font-bold text-blue-400">
+                    {currentData.spo2}%
+                  </div>
+                  <div className="text-xs text-muted-foreground">Oksigen Darah</div>
+                </CardContent>
+              </Card>
 
-            {/* Blood Pressure */}
-            <Card className="glass-card bg-gradient-to-br from-purple-400/10 to-indigo-400/10">
-              <CardContent className="p-4 text-center">
-                <Activity className="w-6 h-6 mx-auto mb-2 text-purple-400" />
-                <div className="text-lg font-bold text-purple-400">
-                  {currentData.tekanan_sys}/{currentData.tekanan_dia}
+              {/* Blood Pressure */}
+              <Card className="glass-card bg-gradient-to-br from-purple-400/10 to-indigo-400/10">
+                <CardContent className="p-4 text-center">
+                  <Activity className="w-6 h-6 mx-auto mb-2 text-purple-400" />
+                  <div className="text-lg font-bold text-purple-400">
+                    {currentData.tekanan_sys}/{currentData.tekanan_dia}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Tekanan Darah</div>
+                </CardContent>
+              </Card>
+            </div>
+            
+            {/* Penjelasan Parameter */}
+            <Card className="glass-card bg-muted/20">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center">
+                  <Activity className="w-5 h-5 mr-2 text-muted-foreground" />
+                  Penjelasan Parameter Vital
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-red-400 flex items-center">
+                      <Thermometer className="w-4 h-4 mr-1" />
+                      Suhu Tubuh
+                    </h4>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      <strong>Normal:</strong> 36.1-37.2°C<br/>
+                      Mengukur suhu internal tubuh untuk mendeteksi demam atau hipotermia.
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-red-500 flex items-center">
+                      <Heart className="w-4 h-4 mr-1" fill="currentColor" />
+                      BPM (Beats Per Minute)
+                    </h4>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      <strong>Normal:</strong> 60-100 BPM<br/>
+                      Jumlah detak jantung per menit. Menunjukkan irama dan kekuatan jantung.
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-blue-400 flex items-center">
+                      <Droplets className="w-4 h-4 mr-1" />
+                      SpO2 (Saturasi Oksigen)
+                    </h4>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      <strong>Normal:</strong> 95-100%<br/>
+                      Persentase oksigen dalam darah. Penting untuk fungsi organ vital.
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-purple-400 flex items-center">
+                      <Activity className="w-4 h-4 mr-1" />
+                      Tekanan Darah (mmHg)
+                    </h4>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      <strong>Normal:</strong> 90-120/60-80<br/>
+                      <strong>Sistolik:</strong> {currentData.tekanan_sys} (saat jantung berkontraksi)<br/>
+                      <strong>Diastolik:</strong> {currentData.tekanan_dia} (saat jantung berelaksasi)
+                    </p>
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground">mmHg</div>
               </CardContent>
             </Card>
           </div>
@@ -326,6 +386,35 @@ export default function Dashboard() {
             data={historicalData} 
             currentData={currentData}
           />
+          
+          {/* Informasi Grafik */}
+          <Card className="glass-card mt-4 bg-muted/20">
+            <CardContent className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div>
+                  <h4 className="font-semibold mb-2 text-primary">📈 Cara Membaca Grafik</h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Grafik menampilkan perubahan vital signs dalam waktu nyata. 
+                    Garis merah = BPM, Garis biru = SpO2, Garis oranye = Suhu.
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-2 text-green-600">✅ Rentang Normal</h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Suhu: 36.1-37.2°C | BPM: 60-100 | SpO2: 95-100% | 
+                    Tekanan: 90-120/60-80 mmHg
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-2 text-yellow-600">⚠️ Peringatan</h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Jika nilai di luar rentang normal secara konsisten, 
+                    segera konsultasi dengan tenaga medis.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Historical Data - Simplified */}
@@ -357,7 +446,7 @@ export default function Dashboard() {
                         })}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {item.suhu}°C • {item.bpm}BPM • {item.spo2}% • {item.tekanan_sys}/{item.tekanan_dia}
+                        Suhu: {item.suhu}°C • Jantung: {item.bpm}BPM • Oksigen: {item.spo2}% • Tekanan: {item.tekanan_sys}/{item.tekanan_dia} mmHg
                       </p>
                     </div>
                     <Badge 
