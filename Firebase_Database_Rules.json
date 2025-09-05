@@ -1,0 +1,13 @@
+{
+  "rules": {
+    ".read": true,
+    ".write": true,
+    "data_jantung": {
+      ".read": true,
+      ".write": true,
+      "$data_id": {
+        ".validate": "newData.hasChildren(['timestamp', 'device_id'])"
+      }
+    }
+  }
+}

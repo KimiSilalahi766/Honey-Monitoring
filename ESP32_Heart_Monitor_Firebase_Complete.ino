@@ -14,9 +14,7 @@ const char* password = "passwordwifi";      // Password WiFi Anda
 
 // Konfigurasi Firebase - SESUAI DENGAN PROJECT ANDA
 #define API_KEY "AIzaSyC_4FizusMK9ksaWcYXBmubsp3GGxuuX0g"
-#define DATABASE_URL "https://monitoring-jantung-f8031-default-rtdb.firebaseio.com/"
-#define USER_EMAIL "kimsilalahi@gmail.com"
-#define USER_PASSWORD "020710Si766Hi"
+#define DATABASE_URL "https://monitoring-jantung-f8031-default-rtdb.firebaseio.com"
 
 // Data objek Firebase
 FirebaseData fbdo;
@@ -205,29 +203,50 @@ void setupFirebase() {
   
   Serial.println("Mengatur Firebase...");
   
-  // Konfigurasi Firebase
+  // Konfigurasi Firebase dengan mode simplified
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
-  auth.user.email = USER_EMAIL;
-  auth.user.password = USER_PASSWORD;
+  
+  // Tidak perlu authentication untuk mode ini
+  config.token_status_callback = nullptr;
   
   // Initialize Firebase
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
   
-  // Tunggu Firebase ready
+  Serial.println("Firebase config set, testing connection...");
+  
+  // Test koneksi dengan timeout yang lebih pendek
   unsigned long startTime = millis();
-  while (!Firebase.ready() && (millis() - startTime) < 15000) {
-    delay(500);
+  bool connectionTested = false;
+  
+  while (!connectionTested && (millis() - startTime) < 10000) {
     Serial.print(".");
+    delay(500);
+    
+    // Test dengan simple write
+    if (Firebase.RTDB.setString(&fbdo, "/test/connection", "OK")) {
+      firebaseReady = true;
+      connectionTested = true;
+      Serial.println("\n✅ Firebase terhubung!");
+      lcd.setCursor(0, 3);
+      lcd.print("Firebase: OK       ");
+      
+      // Hapus test data
+      Firebase.RTDB.deleteNode(&fbdo, "/test");
+      
+    } else if ((millis() - startTime) > 8000) {
+      // Jika lebih dari 8 detik, anggap gagal
+      firebaseReady = false;
+      connectionTested = true;
+      Serial.println("\n⚠️ Firebase timeout - mode offline");
+      Serial.println("Error: " + fbdo.errorReason());
+      lcd.setCursor(0, 3);
+      lcd.print("Firebase: Timeout  ");
+    }
   }
   
-  if (Firebase.ready()) {
-    firebaseReady = true;
-    Serial.println("\n✅ Firebase terhubung!");
-    lcd.setCursor(0, 3);
-    lcd.print("Firebase: OK       ");
-  } else {
+  if (!connectionTested) {
     firebaseReady = false;
     Serial.println("\n⚠️ Firebase gagal - mode offline");
     lcd.setCursor(0, 3);
