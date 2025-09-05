@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -18,7 +18,7 @@ import {
 import { Link } from "wouter";
 import { ParameterCard } from "@/components/parameter-card";
 import { ClassificationStatus } from "@/components/classification-status";
-import { RealTimeChart } from "@/components/real-time-chart";
+import { SimpleCharts } from "@/components/simple-charts";
 import { DataHistoryTable } from "@/components/data-history-table";
 import { NotificationSystem, useNotifications } from "@/components/notification-system";
 import { FirebaseStatus } from "@/components/firebase-status";
@@ -307,29 +307,34 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Charts and Firebase Status */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <RealTimeChart 
-            data={historicalData} 
-            currentData={currentData}
-          />
-          
+        {/* Firebase Status */}
+        <div className="mb-8">
           <FirebaseStatus 
             isConnected={isConnected}
             lastUpdate={lastUpdate}
           />
         </div>
         
-        {/* Current Status Display */}
+        {/* Simple Charts - 4 separate charts */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold mb-4 flex items-center text-foreground">
+            <BarChart3 className="w-6 h-6 mr-2 text-primary" />
+            Grafik Real-time Parameter Jantung
+          </h2>
+          <SimpleCharts 
+            data={historicalData} 
+            currentData={currentData}
+          />
+        </div>
+        
+        {/* Current Status Display - Simplified */}
         {currentData && (
           <Card className="glass-card bg-card/40 backdrop-blur-lg border-border/50 mb-8">
-            <CardHeader>
-              <CardTitle className="flex items-center text-xl">
+            <CardContent className="p-6">
+              <h3 className="text-xl font-bold mb-4 flex items-center text-foreground">
                 <Activity className="w-5 h-5 mr-2 text-accent" />
                 Status Real-time ESP32
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+              </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center">
                   <div className="w-20 h-20 mx-auto mb-2 relative">
