@@ -97,7 +97,7 @@ export function DataHistoryTable({ data, className }: DataHistoryTableProps) {
   };
 
   const exportToCSV = () => {
-    const headers = ['Timestamp', 'Temperature (°C)', 'BPM', 'SpO2 (%)', 'Sys BP', 'Dia BP', 'Signal Quality', 'Classification'];
+    const headers = ['Timestamp', 'Temperature (°C)', 'BPM', 'SpO2 (%)', 'Signal Quality', 'Classification'];
     const csvContent = [
       headers.join(','),
       ...data.map(row => [
@@ -105,8 +105,6 @@ export function DataHistoryTable({ data, className }: DataHistoryTableProps) {
         row.suhu,
         row.bpm,
         row.spo2,
-        row.tekanan_sys,
-        row.tekanan_dia,
         row.signal_quality,
         row.kondisi
       ].join(','))
@@ -191,9 +189,6 @@ export function DataHistoryTable({ data, className }: DataHistoryTableProps) {
                     <span className="ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>
                   )}
                 </th>
-                <th className="text-left py-3 px-4 font-semibold text-muted-foreground">
-                  BP (mmHg)
-                </th>
                 <th className="text-left py-3 px-4 font-semibold text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
                     onClick={() => handleSort('kondisi')}>
                   Classification
@@ -206,7 +201,7 @@ export function DataHistoryTable({ data, className }: DataHistoryTableProps) {
             <tbody>
               {paginatedData.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <td colSpan={5} className="text-center py-8 text-muted-foreground">
                     No data available. Waiting for ESP32 device data...
                   </td>
                 </tr>
@@ -245,12 +240,6 @@ export function DataHistoryTable({ data, className }: DataHistoryTableProps) {
                       getStatusColor(getParameterStatus(row.spo2, 'spo2'))
                     )}>
                       {row.spo2}
-                    </td>
-                    <td className={cn(
-                      "py-3 px-4 font-mono font-semibold",
-                      getStatusColor(getBloodPressureStatus(row.tekanan_sys, row.tekanan_dia))
-                    )}>
-                      {row.tekanan_sys}/{row.tekanan_dia}
                     </td>
                     <td className="py-3 px-4">
                       <Badge 
