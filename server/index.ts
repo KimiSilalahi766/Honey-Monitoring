@@ -1,10 +1,29 @@
-import { config } from 'dotenv';
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
-// Load environment variables first
-config();
+// Load environment variables manually for ES modules
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+
+try {
+  const envPath = resolve('.env');
+  const envFile = readFileSync(envPath, 'utf8');
+  const envLines = envFile.split('\n');
+  
+  for (const line of envLines) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...valueParts] = trimmed.split('=');
+      if (key && valueParts.length > 0) {
+        const value = valueParts.join('=').replace(/^["']|["']$/g, '');
+        process.env[key.trim()] = value;
+      }
+    }
+  }
+} catch (error) {
+  console.warn('Could not load .env file:', error instanceof Error ? error.message : String(error));
+}
 
 const app = express();
 app.use(express.json());
