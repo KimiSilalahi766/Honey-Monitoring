@@ -138,6 +138,85 @@ export function DataCollection() {
 
   const allChecklistComplete = Object.values(checklist).every(Boolean);
 
+  // Print Consent Form function
+  const printConsentForm = () => {
+    const consentContent = `
+      FORMULIR PERSETUJUAN PENELITIAN
+      ========================================
+      
+      Judul Penelitian:
+      "Penerapan Internet of Things dalam Identifikasi Dini dan Monitoring Kondisi Jantung Secara Real-Time"
+      
+      Tujuan:
+      Penelitian ini bertujuan mengembangkan sistem monitoring jantung menggunakan IoT dengan klasifikasi Naive Bayes untuk deteksi dini kondisi jantung.
+      
+      Prosedur:
+      • Pemasangan sensor non-invasif (5-10 menit)
+      • Recording vital signs selama 5-10 menit  
+      • Data disimpan secara anonim untuk penelitian
+      
+      Risiko:
+      Risiko minimal, sensor non-invasif dan aman digunakan.
+      
+      Kerahasiaan:
+      Data akan dijaga kerahasiaannya dan hanya digunakan untuk keperluan penelitian akademik.
+      
+      Saya memahami dan menyetujui untuk berpartisipasi dalam penelitian ini.
+      
+      Nama Subjek: _____________________________
+      
+      Tanda Tangan: ____________________________
+      
+      Tanggal: ${new Date().toLocaleDateString('id-ID')}
+      
+      Saksi:
+      Nama: ____________________________________
+      Tanda Tangan: ____________________________
+      
+      ========================================
+      Penelitian dilakukan dalam rangka thesis mahasiswa
+    `;
+
+    // Create new window for printing
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Formulir Persetujuan Penelitian</title>
+            <style>
+              body { 
+                font-family: Arial, sans-serif; 
+                line-height: 1.6; 
+                margin: 20px;
+                font-size: 14px;
+              }
+              h1 { text-align: center; margin-bottom: 20px; }
+              pre { white-space: pre-wrap; }
+              @media print {
+                body { margin: 0; }
+                .no-print { display: none; }
+              }
+            </style>
+          </head>
+          <body>
+            <pre>${consentContent}</pre>
+            <br>
+            <button onclick="window.print(); window.close();" class="no-print">🖨️ Print & Close</button>
+            <button onclick="window.close();" class="no-print">❌ Cancel</button>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    } else {
+      toast({ 
+        title: "✗ Tidak dapat membuka window print", 
+        description: "Pop-up mungkin diblokir browser",
+        variant: "destructive" 
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -438,7 +517,12 @@ export function DataCollection() {
                   Saya memahami dan menyetujui untuk berpartisipasi dalam penelitian ini.
                 </p>
               </div>
-              <Button variant="outline" className="w-full" data-testid="button-print-consent">
+              <Button 
+                variant="outline" 
+                className="w-full" 
+                onClick={printConsentForm}
+                data-testid="button-print-consent"
+              >
                 <FileText className="w-4 h-4 mr-2" />
                 Print Consent Form
               </Button>
