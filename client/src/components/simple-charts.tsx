@@ -219,7 +219,7 @@ export function SimpleCharts({ data, currentData, className }: SimpleChartsProps
             data: {
               labels,
               datasets: [{
-                label: 'Sistolik',
+                label: 'Tekanan Atas',
                 data: chartData.map(item => item.tekanan_sys),
                 borderColor: 'rgb(147, 51, 234)',
                 backgroundColor: 'rgba(147, 51, 234, 0.1)',
@@ -229,7 +229,7 @@ export function SimpleCharts({ data, currentData, className }: SimpleChartsProps
                 pointHoverRadius: 6,
                 borderWidth: 2
               }, {
-                label: 'Diastolik',
+                label: 'Tekanan Bawah',
                 data: chartData.map(item => item.tekanan_dia),
                 borderColor: 'rgb(168, 85, 247)',
                 backgroundColor: 'rgba(168, 85, 247, 0.1)',

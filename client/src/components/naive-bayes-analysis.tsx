@@ -134,7 +134,7 @@ export function NaiveBayesAnalysis({ currentData, className }: NaiveBayesAnalysi
                     <div>
                       <h4 className="font-semibold">Kalibrasi Medis Terintegrasi</h4>
                       <p className="text-sm text-muted-foreground">
-                        Training data dikalibrasi dengan standar medis (Sistolik -15mmHg, Diastolik -10mmHg)
+                        Training data dikalibrasi dengan standar medis (Tekanan Atas -15mmHg, Tekanan Bawah -10mmHg)
                       </p>
                     </div>
                   </div>
@@ -251,8 +251,8 @@ export function NaiveBayesAnalysis({ currentData, className }: NaiveBayesAnalysi
                       <Badge variant="outline">Suhu Tubuh</Badge>
                       <Badge variant="outline">Detak Jantung</Badge>
                       <Badge variant="outline">Kadar Oksigen</Badge>
-                      <Badge variant="outline">Tekanan Sistolik</Badge>
-                      <Badge variant="outline">Tekanan Diastolik</Badge>
+                      <Badge variant="outline">Tekanan Atas</Badge>
+                      <Badge variant="outline">Tekanan Bawah</Badge>
                       <Badge variant="outline">Kualitas Sinyal</Badge>
                     </div>
                   </div>
@@ -331,11 +331,11 @@ export function NaiveBayesAnalysis({ currentData, className }: NaiveBayesAnalysi
                   <div className="bg-gradient-to-r from-accent/10 to-primary/10 p-4 rounded-lg">
                     <div className="space-y-2">
                       <div className="flex justify-between">
-                        <span>Tekanan Sistolik</span>
+                        <span>Tekanan Atas</span>
                         <Badge variant="outline">-15 mmHg</Badge>
                       </div>
                       <div className="flex justify-between">
-                        <span>Tekanan Diastolik</span>
+                        <span>Tekanan Bawah</span>
                         <Badge variant="outline">-10 mmHg</Badge>
                       </div>
                     </div>
@@ -350,8 +350,8 @@ export function NaiveBayesAnalysis({ currentData, className }: NaiveBayesAnalysi
                       <p><span className="font-medium">Suhu:</span> 36.1-37.2°C</p>
                       <p><span className="font-medium">BPM:</span> 60-100 bpm</p>
                       <p><span className="font-medium">SpO2:</span> 95-100%</p>
-                      <p><span className="font-medium">Sistolik:</span> 90-120 mmHg</p>
-                      <p><span className="font-medium">Diastolik:</span> 60-80 mmHg</p>
+                      <p><span className="font-medium">Tekanan Atas:</span> 90-120 mmHg</p>
+                      <p><span className="font-medium">Tekanan Bawah:</span> 60-80 mmHg</p>
                     </div>
                   </div>
                 </div>
@@ -424,10 +424,10 @@ export function NaiveBayesAnalysis({ currentData, className }: NaiveBayesAnalysi
                       <div>
                         <p className="font-semibold">Adjustment Values:</p>
                         <p className="text-sm text-muted-foreground">
-                          Sistolik: {analysisData.medical_calibration.systolic_adjustment} mmHg
+                          Tekanan Atas: {analysisData.medical_calibration.systolic_adjustment} mmHg
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          Diastolik: {analysisData.medical_calibration.diastolic_adjustment} mmHg
+                          Tekanan Bawah: {analysisData.medical_calibration.diastolic_adjustment} mmHg
                         </p>
                       </div>
                       <div>

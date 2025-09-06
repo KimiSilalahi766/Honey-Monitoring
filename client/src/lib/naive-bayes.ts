@@ -147,8 +147,8 @@ class NaiveBayesClassifier {
       suhu: 'Suhu Tubuh',
       bpm: 'Detak Jantung', 
       spo2: 'Kadar Oksigen',
-      tekanan_sys: 'Tekanan Sistolik',
-      tekanan_dia: 'Tekanan Diastolik',
+      tekanan_sys: 'Tekanan Atas',
+      tekanan_dia: 'Tekanan Bawah',
       signal_quality: 'Kualitas Sinyal'
     };
     return featureNames[feature] || feature;

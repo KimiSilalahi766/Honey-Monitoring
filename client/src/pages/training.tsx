@@ -284,7 +284,7 @@ export function Training() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="sys">Sistolik</Label>
+                  <Label htmlFor="sys">Tekanan Atas</Label>
                   <Input
                     id="sys"
                     type="number"
@@ -294,7 +294,7 @@ export function Training() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="dia">Diastolik</Label>
+                  <Label htmlFor="dia">Tekanan Bawah</Label>
                   <Input
                     id="dia"
                     type="number"
@@ -405,8 +405,8 @@ export function Training() {
                       <th className="text-left p-2">Suhu</th>
                       <th className="text-left p-2">BPM</th>
                       <th className="text-left p-2">SpO2</th>
-                      <th className="text-left p-2">Sistolik</th>
-                      <th className="text-left p-2">Diastolik</th>
+                      <th className="text-left p-2">Tekanan Atas</th>
+                      <th className="text-left p-2">Tekanan Bawah</th>
                       <th className="text-left p-2">Quality</th>
                       <th className="text-left p-2">Label</th>
                       <th className="text-left p-2">Aksi</th>
