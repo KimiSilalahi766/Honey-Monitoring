@@ -366,8 +366,7 @@ export default function Dashboard() {
                     </h4>
                     <p className="text-xs text-muted-foreground leading-relaxed">
                       <strong>Normal:</strong> 90-120/60-80<br/>
-                      <strong>Sistolik:</strong> {currentData.tekanan_sys} (saat jantung berkontraksi)<br/>
-                      <strong>Diastolik:</strong> {currentData.tekanan_dia} (saat jantung berelaksasi)
+                      Tekanan darah menunjukkan kekuatan aliran darah dalam pembuluh arteri.
                     </p>
                   </div>
                 </div>

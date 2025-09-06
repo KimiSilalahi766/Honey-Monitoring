@@ -69,6 +69,13 @@ class NaiveBayesClassifier {
       throw new Error('Model not trained');
     }
 
+    // Apply calibration to blood pressure values for calculation
+    const calibratedInput = {
+      ...input,
+      tekanan_sys: input.tekanan_sys - 15, // Calibration -15 for systolic
+      tekanan_dia: input.tekanan_dia - 10  // Calibration -10 for diastolic
+    };
+
     const { labels, features, priors, likelihoods } = this.model;
     const probabilities: Record<string, number> = {};
     const featureContributions: Record<string, number> = {};
@@ -81,7 +88,7 @@ class NaiveBayesClassifier {
       detailedCalculations.push(`Prior P(${label}) = ${(priors[label] * 100).toFixed(2)}%`);
       
       features.forEach(feature => {
-        const value = (input as any)[feature];
+        const value = (calibratedInput as any)[feature];
         const { mean, variance } = likelihoods[label][feature];
         
         // Gaussian probability density function

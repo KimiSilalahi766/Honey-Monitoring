@@ -174,12 +174,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let nbConfidence = validatedData.nb_confidence;
       
       if (!nbClassification) {
+        // Apply calibration to blood pressure values for classification
         const features = [
           validatedData.suhu,
           validatedData.bpm,
           validatedData.spo2,
-          validatedData.tekanan_sys,
-          validatedData.tekanan_dia,
+          validatedData.tekanan_sys - 15, // Calibration -15 for systolic
+          validatedData.tekanan_dia - 10, // Calibration -10 for diastolic
           validatedData.signal_quality
         ];
         
@@ -284,12 +285,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = classificationRequestSchema.parse(req.body);
       
       // Extract features in the same order as training data
+      // Apply calibration to blood pressure values for classification
       const features = [
         validatedData.suhu,
         validatedData.bpm,
         validatedData.spo2,
-        validatedData.tekanan_sys,
-        validatedData.tekanan_dia,
+        validatedData.tekanan_sys - 15, // Calibration -15 for systolic
+        validatedData.tekanan_dia - 10, // Calibration -10 for diastolic
         validatedData.signal_quality
       ];
 
