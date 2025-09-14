@@ -19,7 +19,7 @@ import { Link } from "wouter";
 import { SimpleCharts } from "@/components/simple-charts";
 import { NotificationSystem, useNotifications } from "@/components/notification-system";
 import { useFirebaseData } from "@/hooks/use-firebase-data";
-// import { classifyHeartCondition } from "@/lib/naive-bayes"; // Not needed - using Arduino result directly
+import { classifyWithFirebaseModel } from "@/lib/naive-bayes-firebase-model";
 import { database } from "@/lib/firebase";
 import { ref } from "firebase/database";
 import { useState } from 'react';
@@ -69,47 +69,25 @@ export default function Dashboard() {
 
   // Removed test data function - system detects Arduino data automatically
 
-  // ✅ FIX: Use Arduino's classification directly, bukan override dengan algoritma web
+  // ✅ MENGGUNAKAN MODEL FIREBASE YANG DIUPLOAD USER
   const getEnhancedClassification = () => {
     if (!currentData) return null;
     
     try {
-      // GUNAKAN HASIL ARDUINO LANGSUNG dari Firebase dengan normalisasi
-      const rawKondisi = currentData.kondisi?.trim() || 'Normal';
-      // Normalize case dan handle variations
-      const normalizedKondisi = rawKondisi.toLowerCase();
-      let arduinoClassification: 'Normal' | 'Kurang Normal' | 'Berbahaya';
-      
-      if (normalizedKondisi.includes('berbahaya') || normalizedKondisi.includes('danger')) {
-        arduinoClassification = 'Berbahaya';
-      } else if (normalizedKondisi.includes('kurang') || normalizedKondisi.includes('less')) {
-        arduinoClassification = 'Kurang Normal';
-      } else {
-        arduinoClassification = 'Normal';
-      }
-      
-      // Convert to match our interface format for UI consistency
-      const classificationMap = {
-        'Normal': { confidence: 0.95, normal: 0.95, kurangNormal: 0.03, berbahaya: 0.02 },
-        'Kurang Normal': { confidence: 0.88, normal: 0.10, kurangNormal: 0.88, berbahaya: 0.02 },
-        'Berbahaya': { confidence: 0.92, normal: 0.04, kurangNormal: 0.04, berbahaya: 0.92 }
-      };
-      
-      const probabilities = classificationMap[arduinoClassification] || classificationMap['Normal'];
+      // GUNAKAN MODEL NAIVE BAYES DARI FIREBASE RTDB
+      const result = classifyWithFirebaseModel({
+        suhu: currentData.suhu,
+        bpm: currentData.bpm,
+        spo2: currentData.spo2,
+        tekanan_sys: currentData.tekanan_sys,
+        tekanan_dia: currentData.tekanan_dia
+      });
       
       return {
-        classification: arduinoClassification,
-        confidence: probabilities.confidence,
-        probabilities: {
-          Normal: probabilities.normal,
-          'Kurang Normal': probabilities.kurangNormal,
-          Berbahaya: probabilities.berbahaya
-        },
-        explanation: `HASIL LANGSUNG DARI ESP32 ARDUINO:\n` +
-                     `Status: ${arduinoClassification}\n` +
-                     `Source: Hardware ESP32 Monitor Jantung\n` +
-                     `Data: Real-time dari sensor MAX30105, MLX90614, dll\n\n` +
-                     `✅ Menggunakan klasifikasi ARDUINO asli, bukan override web app`,
+        classification: result.classification,
+        confidence: result.confidence,
+        probabilities: result.probabilities,
+        explanation: result.explanation,
         features_impact: {
           suhu: currentData.suhu > 37.5 ? 0.8 : 0.2,
           bpm: currentData.bpm > 100 || currentData.bpm < 60 ? 0.8 : 0.2,
@@ -120,7 +98,7 @@ export default function Dashboard() {
         }
       };
     } catch (err) {
-      console.error('Arduino classification error:', err);
+      console.error('Firebase model classification error:', err);
       return null;
     }
   };
@@ -300,6 +278,88 @@ export default function Dashboard() {
                   <p>Menunggu data untuk klasifikasi...</p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* ✅ PERBANDINGAN PREDIKSI: Arduino vs Web Model */}
+          <Card className="glass-card border-2 border-primary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center text-lg">
+                <Brain className="w-5 h-5 mr-2 text-primary" />
+                Perbandingan Model Klasifikasi
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Web Model Firebase (Yang User Upload) */}
+                <div className="p-4 rounded-lg border border-primary/20 bg-primary/5">
+                  <div className="flex items-center mb-3">
+                    <Brain className="w-5 h-5 mr-2 text-primary" />
+                    <h4 className="font-semibold">Web Model Firebase</h4>
+                  </div>
+                  {enhancedClassification ? (
+                    <div className="space-y-2">
+                      <div className={`text-center py-2 px-3 rounded font-bold ${
+                        enhancedClassification.classification === 'Normal' 
+                          ? "bg-green-500/20 text-green-400" 
+                          : enhancedClassification.classification === 'Kurang Normal'
+                          ? "bg-yellow-500/20 text-yellow-400"
+                          : "bg-red-500/20 text-red-400"
+                      }`}>
+                        {enhancedClassification.classification}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        <div>Confidence: {(enhancedClassification.confidence * 100).toFixed(1)}%</div>
+                        <div>Source: Model JSON user upload</div>
+                        <div>Dataset: 79,540 samples EHR</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted-foreground py-4">
+                      Menunggu data...
+                    </div>
+                  )}
+                </div>
+
+                {/* Arduino Hardware Classification */}
+                <div className="p-4 rounded-lg border border-orange-500/20 bg-orange-500/5">
+                  <div className="flex items-center mb-3">
+                    <Activity className="w-5 h-5 mr-2 text-orange-500" />
+                    <h4 className="font-semibold">Arduino Hardware</h4>
+                  </div>
+                  {currentData ? (
+                    <div className="space-y-2">
+                      <div className={`text-center py-2 px-3 rounded font-bold ${
+                        currentData.kondisi === 'Normal' 
+                          ? "bg-green-500/20 text-green-400" 
+                          : currentData.kondisi === 'Kurang Normal'
+                          ? "bg-yellow-500/20 text-yellow-400"
+                          : "bg-red-500/20 text-red-400"
+                      }`}>
+                        {currentData.kondisi}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        <div>Source: ESP32 Scoring Algorithm</div>
+                        <div>Method: Rule-based threshold</div>
+                        <div>Real-time: Sensor langsung</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted-foreground py-4">
+                      Tidak ada data Arduino
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Explanation */}
+              <div className="mt-4 p-3 bg-muted/30 rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  💡 <strong>Perbedaan:</strong> Web Model menggunakan machine learning dengan 79,540 data pasien EHR, 
+                  sedangkan Arduino menggunakan algoritma scoring berbasis threshold medis. 
+                  Kedua metode dapat memberikan hasil yang berbeda karena pendekatan yang berbeda.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </div>

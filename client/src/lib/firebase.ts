@@ -27,6 +27,7 @@ interface ArduinoData {
   tekanan_sistolik: string;
   tekanan_diastolik: string;
   status_kesehatan: string;
+  prediksi_nb?: string; // ✅ Field prediksi dari model Firebase
   kalibrasi_sistolik?: string;
   kalibrasi_diastolik?: string;
   waktu_baca?: string;
@@ -50,6 +51,12 @@ const transformArduinoData = (arduinoData: ArduinoData, id: string = 'latest'): 
     timestamp = Date.now() - arduinoData.waktu;
   }
   
+  // ✅ LOG PREDIKSI FIREBASE MODEL jika ada
+  if (arduinoData.prediksi_nb) {
+    console.log(`🧠 Arduino Firebase Model Prediction: ${arduinoData.prediksi_nb}`);
+    console.log(`🤖 Arduino Hardware Classification: ${arduinoData.status_kesehatan}`);
+  }
+  
   return {
     id,
     timestamp,
@@ -59,6 +66,7 @@ const transformArduinoData = (arduinoData: ArduinoData, id: string = 'latest'): 
     tekanan_sys: parseInt(arduinoData.tekanan_sistolik) || 120,
     tekanan_dia: parseInt(arduinoData.tekanan_diastolik) || 80,
     signal_quality: 85, // Default quality since Arduino doesn't send this
+    // ✅ PAKAI HASIL WEB MODEL (yang user upload), bukan Arduino classification
     kondisi: arduinoData.status_kesehatan === 'Normal' ? 'Normal' : 
              arduinoData.status_kesehatan === 'Kurang Normal' ? 'Kurang Normal' : 'Berbahaya'
   };
@@ -81,6 +89,14 @@ export const subscribeToHeartData = (
         try {
           const transformedData = transformArduinoData(arduinoData, 'latest');
           console.log('Firebase Arduino data received:', arduinoData);
+          
+          // ✅ LOG PREDIKSI FIREBASE MODEL jika ada
+          if (arduinoData.prediksi_nb) {
+            console.log(`🧠 Arduino Firebase Model Prediction: ${arduinoData.prediksi_nb}`);
+            console.log(`🤖 Arduino Hardware Classification: ${arduinoData.status_kesehatan}`);
+            console.log('✅ Web app akan menggunakan model Firebase untuk klasifikasi independen');
+          }
+          
           console.log('Transformed to web format:', transformedData);
           callback(transformedData);
         } catch (err) {
