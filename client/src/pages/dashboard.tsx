@@ -21,7 +21,7 @@ import { NotificationSystem, useNotifications } from "@/components/notification-
 import { useFirebaseData } from "@/hooks/use-firebase-data";
 import { classifyHeartCondition } from "@/lib/naive-bayes";
 import { database } from "@/lib/firebase";
-import { ref, push } from "firebase/database";
+import { ref, push, set } from "firebase/database";
 import { useState } from 'react';
 
 export default function Dashboard() {
@@ -55,23 +55,27 @@ export default function Dashboard() {
     }
   }, [currentData?.kondisi, addNotification]);
 
-  // Send test data function
+  // Send test data function (Arduino format)
   const sendTestData = async () => {
     setIsSendingTest(true);
     try {
+      // Create Arduino-shaped test data
       const testData = {
-        timestamp: Date.now(),
-        suhu: parseFloat((36.5 + Math.random() * 1.5).toFixed(1)),
-        bpm: Math.floor(70 + Math.random() * 30),
-        spo2: Math.floor(95 + Math.random() * 5),
-        tekanan_sys: Math.floor(110 + Math.random() * 30),
-        tekanan_dia: Math.floor(70 + Math.random() * 20),
-        signal_quality: Math.floor(80 + Math.random() * 20),
-        kondisi: Math.random() > 0.8 ? 'Kurang Normal' : 'Normal'
+        waktu: Date.now(), // Use current timestamp
+        perangkat: "ESP32_Monitor_Jantung_Test",
+        suhu_tubuh: (36.5 + Math.random() * 1.5).toFixed(1),
+        detak_jantung: String(Math.floor(70 + Math.random() * 30)),
+        kadar_oksigen: String(Math.floor(95 + Math.random() * 5)),
+        tekanan_sistolik: String(Math.floor(110 + Math.random() * 30)),
+        tekanan_diastolik: String(Math.floor(70 + Math.random() * 20)),
+        status_kesehatan: Math.random() > 0.8 ? 'Kurang Normal' : 'Normal',
+        kalibrasi_sistolik: "-15",
+        kalibrasi_diastolik: "-10",
+        waktu_baca: new Date().toLocaleTimeString('id-ID')
       };
 
-      const dataRef = ref(database, 'data_jantung');
-      await push(dataRef, testData);
+      const dataRef = ref(database, 'data_kesehatan/terbaru');
+      await set(dataRef, testData); // Use set(), not push() for 'terbaru'
     } catch (error) {
       console.error('Error sending test data:', error);
     } finally {
