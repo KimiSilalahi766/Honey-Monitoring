@@ -197,6 +197,21 @@ export default function Dashboard() {
                   <p className="text-xs text-green-600 dark:text-green-300 mt-1">
                     Data ESP32 Arduino otomatis tampil
                   </p>
+                  <div className="mt-2 pt-2 border-t border-green-200 dark:border-green-800">
+                    <div className="text-xs text-green-700 dark:text-green-300 space-y-1">
+                      <p className="font-medium">🤖 ML: Naive Bayes (Google Colab)</p>
+                      <p>📊 Dataset: 79,540 Kaggle EHR samples</p>
+                      <div className="flex gap-2 justify-center mt-1">
+                        <a href="https://www.kaggle.com/datasets/hansaniuma/patient-health-scores-for-ehr-data" 
+                           target="_blank" rel="noopener" 
+                           className="text-blue-600 dark:text-blue-400 hover:underline">Kaggle</a>
+                        <span>•</span>
+                        <a href="https://colab.research.google.com/drive/1vcbUR3Tjy6dU9Krr9FEEFH_JX4hNcb-g?usp=sharing" 
+                           target="_blank" rel="noopener" 
+                           className="text-blue-600 dark:text-blue-400 hover:underline">Colab</a>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </CardContent>
