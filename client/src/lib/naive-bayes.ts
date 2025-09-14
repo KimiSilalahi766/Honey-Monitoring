@@ -175,7 +175,9 @@ class GoogleColabClassifier {
 
     // Generate comprehensive explanation
     const explanation = `GOOGLE COLAB CLASSIFICATION ALGORITHM\n` +
-                       `Dataset: 79,540 EHR samples dari Kaggle\n\n` +
+                       `Dataset: 79,540 EHR samples dari Kaggle\n` +
+                       `Kaggle URL: https://www.kaggle.com/datasets/hansaniuma/patient-health-scores-for-ehr-data\n` +
+                       `Colab URL: https://colab.research.google.com/drive/1vcbUR3Tjy6dU9Krr9FEEFH_JX4hNcb-g?usp=sharing\n\n` +
                        `📊 ANALISIS PARAMETER VITAL:\n\n` +
                        `🔍 Parameter yang dianalisis: 4 vital signs\n` +
                        `❌ Parameter abnormal: ${result.abnormalCount}/4\n` +
@@ -255,6 +257,8 @@ export const getNaiveBayesAnalysis = () => {
       
       📊 DATASET INFORMATION:
          - Source: Kaggle Patient Health Scores for EHR Data
+         - Dataset URL: https://www.kaggle.com/datasets/hansaniuma/patient-health-scores-for-ehr-data
+         - Google Colab: https://colab.research.google.com/drive/1vcbUR3Tjy6dU9Krr9FEEFH_JX4hNcb-g?usp=sharing
          - Total Samples: ${DATASET_STATS.total_samples.toLocaleString()} patient records
          - Distribution: Normal (${DATASET_STATS.distributions.Normal.percentage}%), Kurang Normal (${DATASET_STATS.distributions['Kurang Normal'].percentage}%), Berbahaya (${DATASET_STATS.distributions.Berbahaya.percentage}%)
       

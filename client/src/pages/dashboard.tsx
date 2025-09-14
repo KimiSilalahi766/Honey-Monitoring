@@ -24,6 +24,18 @@ import { database } from "@/lib/firebase";
 import { ref } from "firebase/database";
 import { useState } from 'react';
 
+// 🧹 PANDUAN MEMBERSIHKAN FIREBASE REALTIME DATABASE:
+// 1. Buka: https://console.firebase.google.com/project/monitoring-jantung-f8031/database/monitoring-jantung-f8031-default-rtdb/data
+// 2. Login dengan akun Google yang memiliki akses ke project
+// 3. Navigate ke path: /data_kesehatan/
+// 4. Hapus data lama: Click pada data lama → Delete
+// 5. Untuk mass delete: Select multiple entries → Delete
+// 6. Keep only recent/relevant data untuk testing
+// 
+// STRUKTUR DATA YANG BENAR:
+// /data_kesehatan/terbaru/ - Data terbaru dari ESP32 Arduino
+// Format: { waktu: number, perangkat: string, suhu_tubuh: number, ... }
+
 export default function Dashboard() {
   const { 
     currentData, 
