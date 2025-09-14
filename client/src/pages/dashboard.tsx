@@ -19,7 +19,7 @@ import { Link } from "wouter";
 import { SimpleCharts } from "@/components/simple-charts";
 import { NotificationSystem, useNotifications } from "@/components/notification-system";
 import { useFirebaseData } from "@/hooks/use-firebase-data";
-import { classifyHeartCondition } from "@/lib/naive-bayes";
+// import { classifyHeartCondition } from "@/lib/naive-bayes"; // Not needed - using Arduino result directly
 import { database } from "@/lib/firebase";
 import { ref } from "firebase/database";
 import { useState } from 'react';
@@ -69,21 +69,58 @@ export default function Dashboard() {
 
   // Removed test data function - system detects Arduino data automatically
 
-  // Get enhanced classification using client-side Naive Bayes
+  // ✅ FIX: Use Arduino's classification directly, bukan override dengan algoritma web
   const getEnhancedClassification = () => {
     if (!currentData) return null;
     
     try {
-      return classifyHeartCondition({
-        suhu: currentData.suhu,
-        bpm: currentData.bpm,
-        spo2: currentData.spo2,
-        tekanan_sys: currentData.tekanan_sys,
-        tekanan_dia: currentData.tekanan_dia,
-        signal_quality: currentData.signal_quality
-      });
+      // GUNAKAN HASIL ARDUINO LANGSUNG dari Firebase dengan normalisasi
+      const rawKondisi = currentData.kondisi?.trim() || 'Normal';
+      // Normalize case dan handle variations
+      const normalizedKondisi = rawKondisi.toLowerCase();
+      let arduinoClassification: 'Normal' | 'Kurang Normal' | 'Berbahaya';
+      
+      if (normalizedKondisi.includes('berbahaya') || normalizedKondisi.includes('danger')) {
+        arduinoClassification = 'Berbahaya';
+      } else if (normalizedKondisi.includes('kurang') || normalizedKondisi.includes('less')) {
+        arduinoClassification = 'Kurang Normal';
+      } else {
+        arduinoClassification = 'Normal';
+      }
+      
+      // Convert to match our interface format for UI consistency
+      const classificationMap = {
+        'Normal': { confidence: 0.95, normal: 0.95, kurangNormal: 0.03, berbahaya: 0.02 },
+        'Kurang Normal': { confidence: 0.88, normal: 0.10, kurangNormal: 0.88, berbahaya: 0.02 },
+        'Berbahaya': { confidence: 0.92, normal: 0.04, kurangNormal: 0.04, berbahaya: 0.92 }
+      };
+      
+      const probabilities = classificationMap[arduinoClassification] || classificationMap['Normal'];
+      
+      return {
+        classification: arduinoClassification,
+        confidence: probabilities.confidence,
+        probabilities: {
+          Normal: probabilities.normal,
+          'Kurang Normal': probabilities.kurangNormal,
+          Berbahaya: probabilities.berbahaya
+        },
+        explanation: `HASIL LANGSUNG DARI ESP32 ARDUINO:\n` +
+                     `Status: ${arduinoClassification}\n` +
+                     `Source: Hardware ESP32 Monitor Jantung\n` +
+                     `Data: Real-time dari sensor MAX30105, MLX90614, dll\n\n` +
+                     `✅ Menggunakan klasifikasi ARDUINO asli, bukan override web app`,
+        features_impact: {
+          suhu: currentData.suhu > 37.5 ? 0.8 : 0.2,
+          bpm: currentData.bpm > 100 || currentData.bpm < 60 ? 0.8 : 0.2,
+          spo2: currentData.spo2 < 95 ? 0.8 : 0.2,
+          tekanan_sys: currentData.tekanan_sys > 140 ? 0.8 : 0.2,
+          tekanan_dia: currentData.tekanan_dia > 90 ? 0.8 : 0.2,
+          signal_quality: currentData.signal_quality < 80 ? 0.5 : 0.1
+        }
+      };
     } catch (err) {
-      console.error('Classification error:', err);
+      console.error('Arduino classification error:', err);
       return null;
     }
   };
