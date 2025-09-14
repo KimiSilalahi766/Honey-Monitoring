@@ -69,41 +69,52 @@ export default function Dashboard() {
 
   // Removed test data function - system detects Arduino data automatically
 
-  // ✅ MENGGUNAKAN MODEL FIREBASE YANG DIUPLOAD USER
-  const getEnhancedClassification = () => {
-    if (!currentData) return null;
-    
-    try {
-      // GUNAKAN MODEL NAIVE BAYES DARI FIREBASE RTDB
-      const result = classifyWithFirebaseModel({
-        suhu: currentData.suhu,
-        bpm: currentData.bpm,
-        spo2: currentData.spo2,
-        tekanan_sys: currentData.tekanan_sys,
-        tekanan_dia: currentData.tekanan_dia
-      });
-      
-      return {
-        classification: result.classification,
-        confidence: result.confidence,
-        probabilities: result.probabilities,
-        explanation: result.explanation,
-        features_impact: {
-          suhu: currentData.suhu > 37.5 ? 0.8 : 0.2,
-          bpm: currentData.bpm > 100 || currentData.bpm < 60 ? 0.8 : 0.2,
-          spo2: currentData.spo2 < 95 ? 0.8 : 0.2,
-          tekanan_sys: currentData.tekanan_sys > 140 ? 0.8 : 0.2,
-          tekanan_dia: currentData.tekanan_dia > 90 ? 0.8 : 0.2,
-          signal_quality: currentData.signal_quality < 80 ? 0.5 : 0.1
-        }
-      };
-    } catch (err) {
-      console.error('Firebase model classification error:', err);
-      return null;
+  // ✅ MENGGUNAKAN MODEL FIREBASE YANG DIUPLOAD USER (ASYNC)
+  const [enhancedClassification, setEnhancedClassification] = useState<any>(null);
+  const [classificationLoading, setClassificationLoading] = useState(false);
+  
+  useEffect(() => {
+    if (!currentData) {
+      setEnhancedClassification(null);
+      return;
     }
-  };
-
-  const enhancedClassification = getEnhancedClassification();
+    
+    const runClassification = async () => {
+      setClassificationLoading(true);
+      try {
+        // GUNAKAN MODEL NAIVE BAYES DARI FIREBASE URL
+        const result = await classifyWithFirebaseModel({
+          suhu: currentData.suhu,
+          bpm: currentData.bpm,
+          spo2: currentData.spo2,
+          tekanan_sys: currentData.tekanan_sys,
+          tekanan_dia: currentData.tekanan_dia
+        });
+        
+        setEnhancedClassification({
+          classification: result.classification,
+          confidence: result.confidence,
+          probabilities: result.probabilities,
+          explanation: result.explanation,
+          features_impact: {
+            suhu: currentData.suhu > 37.5 ? 0.8 : 0.2,
+            bpm: currentData.bpm > 100 || currentData.bpm < 60 ? 0.8 : 0.2,
+            spo2: currentData.spo2 < 95 ? 0.8 : 0.2,
+            tekanan_sys: currentData.tekanan_sys > 140 ? 0.8 : 0.2,
+            tekanan_dia: currentData.tekanan_dia > 90 ? 0.8 : 0.2,
+            signal_quality: currentData.signal_quality < 80 ? 0.5 : 0.1
+          }
+        });
+      } catch (err) {
+        console.error('Firebase model classification error:', err);
+        setEnhancedClassification(null);
+      } finally {
+        setClassificationLoading(false);
+      }
+    };
+    
+    runClassification();
+  }, [currentData]);
 
   if (loading) {
     return (
@@ -241,7 +252,12 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {enhancedClassification && currentData ? (
+              {classificationLoading ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <RefreshCw className="w-6 h-6 mx-auto mb-2 animate-spin" />
+                  <p>Memuat klasifikasi Firebase...</p>
+                </div>
+              ) : enhancedClassification && currentData ? (
                 <div className="space-y-4">
                   <div className="text-center">
                     <div className={`w-16 h-16 mx-auto mb-3 rounded-full flex items-center justify-center text-xl font-bold ${
@@ -310,7 +326,8 @@ export default function Dashboard() {
                       </div>
                       <div className="text-xs text-muted-foreground">
                         <div>Confidence: {(enhancedClassification.confidence * 100).toFixed(1)}%</div>
-                        <div>Source: Model JSON user upload</div>
+                        <div>Source: Firebase Real-time</div>
+                        <div>Sensor: SPG010, MAX30105, MLX90614</div>
                         <div>Dataset: 79,540 samples EHR</div>
                       </div>
                     </div>
