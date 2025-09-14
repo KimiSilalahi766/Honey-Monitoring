@@ -28,7 +28,7 @@ export const classificationRequestSchema = z.object({
   signal_quality: z.number()
 });
 
-// Classification response schema
+// Google Colab Classification Response Schema
 export const classificationResponseSchema = z.object({
   classification: z.enum(["Normal", "Kurang Normal", "Berbahaya"]),
   confidence: z.number().min(0).max(1),
@@ -37,8 +37,11 @@ export const classificationResponseSchema = z.object({
     "Kurang Normal": z.number(),
     Berbahaya: z.number()
   }),
-  explanation: z.string().optional().describe("Naive Bayes calculation explanation"),
-  features_impact: z.record(z.string(), z.number()).optional().describe("Individual feature contributions")
+  explanation: z.string().optional().describe("Google Colab rule-based classification explanation"),
+  features_impact: z.record(z.string(), z.number()).optional().describe("Medical parameter impact analysis"),
+  abnormal_parameters: z.array(z.string()).optional().describe("List of abnormal vital signs"),
+  abnormal_count: z.number().optional().describe("Count of parameters outside normal range"),
+  algorithm: z.literal("Google Colab Rule-based").optional().describe("Classification algorithm used")
 });
 
 export type HeartData = z.infer<typeof heartDataSchema>;
@@ -57,16 +60,40 @@ export interface ParameterInfo {
   icon: string;
 }
 
-// Naive Bayes Analysis Schema
-export const naiveBayesAnalysisSchema = z.object({
-  training_data_count: z.number(),
-  feature_importance: z.record(z.string(), z.number()),
-  class_distributions: z.record(z.string(), z.number()),
-  model_accuracy: z.number(),
-  last_trained: z.string()
+// Google Colab Analysis Schema (79,540 samples dataset)
+export const googleColabAnalysisSchema = z.object({
+  algorithm: z.literal("Google Colab Rule-based Classification"),
+  dataset_source: z.literal("Kaggle EHR (79,540 samples)"),
+  total_samples: z.number().describe("Total samples in original dataset"),
+  class_distributions: z.object({
+    Normal: z.object({ count: z.number(), percentage: z.number() }),
+    "Kurang Normal": z.object({ count: z.number(), percentage: z.number() }),
+    Berbahaya: z.object({ count: z.number(), percentage: z.number() })
+  }),
+  medical_ranges: z.object({
+    blood_pressure: z.object({
+      systolic: z.object({ min: z.number(), max: z.number() }),
+      diastolic: z.object({ min: z.number(), max: z.number() })
+    }),
+    heart_rate: z.object({ min: z.number(), max: z.number() }),
+    oxygen_saturation: z.object({ min: z.number(), max: z.number() }),
+    body_temperature: z.object({ min: z.number(), max: z.number() })
+  }),
+  classification_rules: z.object({
+    Normal: z.string().describe("Rule for normal classification"),
+    "Kurang Normal": z.string().describe("Rule for kurang normal classification"),
+    Berbahaya: z.string().describe("Rule for berbahaya classification")
+  }),
+  google_colab_integration: z.object({
+    notebook_url: z.string().url(),
+    kaggle_dataset: z.string().url(),
+    processing_date: z.string(),
+    data_transformation: z.string()
+  }).optional()
 });
 
-export type NaiveBayesAnalysis = z.infer<typeof naiveBayesAnalysisSchema>;
+export type GoogleColabAnalysis = z.infer<typeof googleColabAnalysisSchema>;
+export type NaiveBayesAnalysis = GoogleColabAnalysis; // Backward compatibility
 
 // Database Tables
 export const heartMonitoringData = pgTable('heart_monitoring_data', {
