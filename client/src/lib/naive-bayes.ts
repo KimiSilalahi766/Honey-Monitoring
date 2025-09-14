@@ -280,10 +280,11 @@ export const getNaiveBayesAnalysis = () => {
       rationale: "ESP32 sensor calibration untuk akurasi medical-grade"
     },
     google_colab_integration: {
-      notebook_url: "https://colab.research.google.com/drive/1pTKHyg4yHPOc5qjaG6j2isdwtvtFmyZ-",
+      notebook_url: "https://colab.research.google.com/drive/1vcbUR3Tjy6dU9Krr9FEEFH_JX4hNcb-g?usp=sharing",
       kaggle_dataset: "https://www.kaggle.com/datasets/hansaniuma/patient-health-scores-for-ehr-data",
-      processing_date: "March 2025",
-      data_transformation: "TEMPF to Celsius, medical terminology alignment"
+      processing_date: "September 2025",
+      data_transformation: "TEMPF to TEMPC (Celsius), RESPR removed, medical standard alignment",
+      features_used: "TEMPC, PULSE, BPSYS, BPDIAS, POPCT, SCORE (0-3 classification)"
     }
   };
 };

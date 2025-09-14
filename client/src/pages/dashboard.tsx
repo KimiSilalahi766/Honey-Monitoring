@@ -21,7 +21,7 @@ import { NotificationSystem, useNotifications } from "@/components/notification-
 import { useFirebaseData } from "@/hooks/use-firebase-data";
 import { classifyHeartCondition } from "@/lib/naive-bayes";
 import { database } from "@/lib/firebase";
-import { ref, push, set } from "firebase/database";
+import { ref } from "firebase/database";
 import { useState } from 'react';
 
 export default function Dashboard() {
