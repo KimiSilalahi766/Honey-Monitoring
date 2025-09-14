@@ -55,33 +55,7 @@ export default function Dashboard() {
     }
   }, [currentData?.kondisi, addNotification]);
 
-  // Send test data function (Arduino format)
-  const sendTestData = async () => {
-    setIsSendingTest(true);
-    try {
-      // Create Arduino-shaped test data
-      const testData = {
-        waktu: Date.now(), // Use current timestamp
-        perangkat: "ESP32_Monitor_Jantung_Test",
-        suhu_tubuh: (36.5 + Math.random() * 1.5).toFixed(1),
-        detak_jantung: String(Math.floor(70 + Math.random() * 30)),
-        kadar_oksigen: String(Math.floor(95 + Math.random() * 5)),
-        tekanan_sistolik: String(Math.floor(110 + Math.random() * 30)),
-        tekanan_diastolik: String(Math.floor(70 + Math.random() * 20)),
-        status_kesehatan: Math.random() > 0.8 ? 'Kurang Normal' : 'Normal',
-        kalibrasi_sistolik: "-15",
-        kalibrasi_diastolik: "-10",
-        waktu_baca: new Date().toLocaleTimeString('id-ID')
-      };
-
-      const dataRef = ref(database, 'data_kesehatan/terbaru');
-      await set(dataRef, testData); // Use set(), not push() for 'terbaru'
-    } catch (error) {
-      console.error('Error sending test data:', error);
-    } finally {
-      setIsSendingTest(false);
-    }
-  };
+  // Removed test data function - system detects Arduino data automatically
 
   // Get enhanced classification using client-side Naive Bayes
   const getEnhancedClassification = () => {
@@ -204,19 +178,14 @@ export default function Dashboard() {
                     {historicalData.length} record
                   </span>
                 </div>
-                <Button
-                  onClick={sendTestData}
-                  disabled={isSendingTest}
-                  className="w-full bg-gradient-to-r from-blue-500 to-cyan-500"
-                  data-testid="button-send-test-data"
-                >
-                  {isSendingTest ? (
-                    <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                  ) : (
-                    <TestTube className="w-4 h-4 mr-2" />
-                  )}
-                  {isSendingTest ? 'Mengirim...' : 'Test Data ESP32'}
-                </Button>
+                <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                  <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                    ✅ Monitoring Aktif
+                  </p>
+                  <p className="text-xs text-green-600 dark:text-green-300 mt-1">
+                    Data ESP32 Arduino otomatis tampil
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
