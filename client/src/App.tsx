@@ -10,8 +10,6 @@ import { Moon, Sun, Heart, Wifi } from "lucide-react";
 import Home from "@/pages/home";
 import Dashboard from "@/pages/dashboard";
 import Analysis from "@/pages/analysis";
-import { Training } from "@/pages/training";
-import { Evaluation } from "@/pages/evaluation";
 import { DataCollection } from "@/pages/data-collection";
 import NotFound from "@/pages/not-found";
 
@@ -68,8 +66,6 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/analysis" component={Analysis} />
-      <Route path="/training" component={Training} />
-      <Route path="/evaluation" component={Evaluation} />
       <Route path="/data-collection" component={DataCollection} />
       <Route component={NotFound} />
     </Switch>

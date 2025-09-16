@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { 
@@ -9,15 +8,11 @@ import {
   Activity, 
   Thermometer,
   Droplets,
-  TrendingUp,
   BarChart3,
-  Zap,
-  Database,
   RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFirebaseData } from "@/hooks/use-firebase-data";
-import { useCombinedHeartData } from "@/hooks/use-database-data";
 import { classifyHeartCondition, calculateFeatureImportance } from "@/lib/naive-bayes";
 import { RealTimeChart } from "@/components/real-time-chart";
 
@@ -27,5 +22,278 @@ interface EnhancedDashboardProps {
 
 export function EnhancedDashboard({ className }: EnhancedDashboardProps) {
   const firebaseData = useFirebaseData();
-  const dbData = useCombinedHeartData();
-  const [selectedDataSource, setSelectedDataSource] = useState<'firebase' | 'database'>('firebase');\n  \n  // Choose data source (prioritize Firebase for real-time, fallback to database)\n  const currentData = selectedDataSource === 'firebase' \n    ? firebaseData.currentData \n    : dbData.currentData;\n  \n  const historicalData = selectedDataSource === 'firebase'\n    ? firebaseData.historicalData\n    : dbData.historicalData;\n  \n  const isLoading = selectedDataSource === 'firebase' \n    ? firebaseData.loading \n    : dbData.isLoading;\n  \n  const isConnected = selectedDataSource === 'firebase'\n    ? firebaseData.isConnected\n    : !dbData.error;\n\n  // Enhanced classification with feature importance\n  const [enhancedAnalysis, setEnhancedAnalysis] = useState<any>(null);\n  \n  useEffect(() => {\n    if (currentData) {\n      try {\n        const classification = classifyHeartCondition({\n          suhu: currentData.suhu,\n          bpm: currentData.bpm,\n          spo2: currentData.spo2,\n          tekanan_sys: currentData.tekanan_sys,\n          tekanan_dia: currentData.tekanan_dia,\n          signal_quality: currentData.signal_quality\n        });\n        \n        const featureImportance = calculateFeatureImportance({\n          suhu: currentData.suhu,\n          bpm: currentData.bpm,\n          spo2: currentData.spo2,\n          tekanan_sys: currentData.tekanan_sys,\n          tekanan_dia: currentData.tekanan_dia,\n          signal_quality: currentData.signal_quality\n        });\n        \n        setEnhancedAnalysis({ classification, featureImportance });\n      } catch (error) {\n        console.error('Analysis error:', error);\n      }\n    }\n  }, [currentData]);\n\n  if (isLoading) {\n    return (\n      <div className={cn(\"flex items-center justify-center p-12\", className)}>\n        <Card className=\"glass-card bg-card/40 backdrop-blur-lg p-8\">\n          <CardContent className=\"flex items-center space-x-3\">\n            <RefreshCw className=\"w-6 h-6 animate-spin text-primary\" />\n            <span className=\"text-lg font-medium\">Memuat data monitoring...</span>\n          </CardContent>\n        </Card>\n      </div>\n    );\n  }\n\n  return (\n    <div className={cn(\"space-y-6\", className)}>\n      {/* Data Source Selector */}\n      <Card className=\"glass-card bg-card/40 backdrop-blur-lg border-border/50\">\n        <CardContent className=\"p-4\">\n          <div className=\"flex items-center justify-between\">\n            <div className=\"flex items-center space-x-4\">\n              <h3 className=\"font-bold text-lg\">Sumber Data</h3>\n              <div className=\"flex space-x-2\">\n                <Button\n                  variant={selectedDataSource === 'firebase' ? \"default\" : \"outline\"}\n                  size=\"sm\"\n                  onClick={() => setSelectedDataSource('firebase')}\n                  className=\"flex items-center space-x-2\"\n                >\n                  <Zap className=\"w-4 h-4\" />\n                  <span>Firebase (Real-time)</span>\n                </Button>\n                <Button\n                  variant={selectedDataSource === 'database' ? \"default\" : \"outline\"}\n                  size=\"sm\"\n                  onClick={() => setSelectedDataSource('database')}\n                  className=\"flex items-center space-x-2\"\n                >\n                  <Database className=\"w-4 h-4\" />\n                  <span>Database (Historical)</span>\n                </Button>\n              </div>\n            </div>\n            \n            <div className=\"flex items-center space-x-2\">\n              <div className={cn(\n                \"w-3 h-3 rounded-full\",\n                isConnected ? \"bg-green-400 animate-pulse\" : \"bg-red-400\"\n              )} />\n              <span className=\"text-sm text-muted-foreground\">\n                {isConnected ? \"Terhubung\" : \"Terputus\"}\n              </span>\n            </div>\n          </div>\n        </CardContent>\n      </Card>\n\n      {/* Real-time Parameters Grid */}\n      {currentData && (\n        <div className=\"grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6\">\n          {/* Temperature */}\n          <Card className=\"glass-card bg-gradient-to-br from-red-400/10 to-orange-400/10 backdrop-blur-lg border-border/50\">\n            <CardContent className=\"p-6\">\n              <div className=\"flex items-center justify-between mb-4\">\n                <div className=\"p-3 bg-gradient-to-br from-red-400/20 to-orange-400/20 rounded-xl\">\n                  <Thermometer className=\"w-6 h-6 text-red-400\" />\n                </div>\n                <Badge \n                  variant={currentData.suhu >= 36.1 && currentData.suhu <= 37.2 ? \"default\" : \"destructive\"}\n                >\n                  {currentData.suhu >= 36.1 && currentData.suhu <= 37.2 ? \"Normal\" : \"Abnormal\"}\n                </Badge>\n              </div>\n              <div>\n                <p className=\"text-3xl font-bold\">{currentData.suhu.toFixed(1)}°C</p>\n                <p className=\"text-sm text-muted-foreground\">Suhu Tubuh</p>\n                <p className=\"text-xs text-muted-foreground mt-1\">Normal: 36.1-37.2°C</p>\n              </div>\n            </CardContent>\n          </Card>\n\n          {/* Heart Rate */}\n          <Card className=\"glass-card bg-gradient-to-br from-red-500/10 to-pink-500/10 backdrop-blur-lg border-border/50\">\n            <CardContent className=\"p-6\">\n              <div className=\"flex items-center justify-between mb-4\">\n                <div className=\"p-3 bg-gradient-to-br from-red-500/20 to-pink-500/20 rounded-xl\">\n                  <Heart className=\"w-6 h-6 text-red-500\" fill=\"currentColor\" />\n                </div>\n                <Badge \n                  variant={currentData.bpm >= 60 && currentData.bpm <= 100 ? \"default\" : \"destructive\"}\n                >\n                  {currentData.bpm >= 60 && currentData.bpm <= 100 ? \"Normal\" : \"Abnormal\"}\n                </Badge>\n              </div>\n              <div>\n                <p className=\"text-3xl font-bold\">{currentData.bpm}</p>\n                <p className=\"text-sm text-muted-foreground\">Detak Jantung (BPM)</p>\n                <p className=\"text-xs text-muted-foreground mt-1\">Normal: 60-100 BPM</p>\n              </div>\n            </CardContent>\n          </Card>\n\n          {/* SpO2 */}\n          <Card className=\"glass-card bg-gradient-to-br from-blue-400/10 to-cyan-400/10 backdrop-blur-lg border-border/50\">\n            <CardContent className=\"p-6\">\n              <div className=\"flex items-center justify-between mb-4\">\n                <div className=\"p-3 bg-gradient-to-br from-blue-400/20 to-cyan-400/20 rounded-xl\">\n                  <Droplets className=\"w-6 h-6 text-blue-400\" />\n                </div>\n                <Badge \n                  variant={currentData.spo2 >= 95 ? \"default\" : \"destructive\"}\n                >\n                  {currentData.spo2 >= 95 ? \"Normal\" : \"Rendah\"}\n                </Badge>\n              </div>\n              <div>\n                <p className=\"text-3xl font-bold\">{currentData.spo2}%</p>\n                <p className=\"text-sm text-muted-foreground\">Kadar Oksigen (SpO2)</p>\n                <p className=\"text-xs text-muted-foreground mt-1\">Normal: ≥95%</p>\n              </div>\n            </CardContent>\n          </Card>\n\n          {/* Blood Pressure */}\n          <Card className=\"glass-card bg-gradient-to-br from-purple-400/10 to-indigo-400/10 backdrop-blur-lg border-border/50\">\n            <CardContent className=\"p-6\">\n              <div className=\"flex items-center justify-between mb-4\">\n                <div className=\"p-3 bg-gradient-to-br from-purple-400/20 to-indigo-400/20 rounded-xl\">\n                  <Activity className=\"w-6 h-6 text-purple-400\" />\n                </div>\n                <Badge \n                  variant={(\n                    currentData.tekanan_sys >= 90 && currentData.tekanan_sys <= 120 &&\n                    currentData.tekanan_dia >= 60 && currentData.tekanan_dia <= 80\n                  ) ? \"default\" : \"destructive\"}\n                >\n                  {(\n                    currentData.tekanan_sys >= 90 && currentData.tekanan_sys <= 120 &&\n                    currentData.tekanan_dia >= 60 && currentData.tekanan_dia <= 80\n                  ) ? \"Normal\" : \"Abnormal\"}\n                </Badge>\n              </div>\n              <div>\n                <p className=\"text-3xl font-bold\">{currentData.tekanan_sys}/{currentData.tekanan_dia}</p>\n                <p className=\"text-sm text-muted-foreground\">Tekanan Darah (mmHg)</p>\n                <p className=\"text-xs text-muted-foreground mt-1\">Normal: 90-120/60-80</p>\n              </div>\n            </CardContent>\n          </Card>\n        </div>\n      )}\n\n      {/* Enhanced Naive Bayes Analysis */}\n      {enhancedAnalysis && (\n        <div className=\"grid grid-cols-1 lg:grid-cols-2 gap-6\">\n          {/* Classification Result */}\n          <Card className=\"glass-card bg-gradient-to-br from-primary/5 to-accent/5 backdrop-blur-lg border-border/50\">\n            <CardHeader>\n              <CardTitle className=\"flex items-center text-xl\">\n                <Brain className=\"w-5 h-5 mr-2 text-primary\" />\n                Hasil Klasifikasi Naive Bayes\n              </CardTitle>\n            </CardHeader>\n            <CardContent>\n              <div className=\"space-y-4\">\n                <div className=\"text-center\">\n                  <div className={cn(\n                    \"w-24 h-24 mx-auto mb-4 rounded-full flex items-center justify-center text-2xl font-bold\",\n                    enhancedAnalysis.classification.classification === 'Normal' \n                      ? \"bg-green-400/20 text-green-400\" \n                      : enhancedAnalysis.classification.classification === 'Kurang Normal'\n                      ? \"bg-yellow-400/20 text-yellow-400\"\n                      : \"bg-red-400/20 text-red-400\"\n                  )}>\n                    {enhancedAnalysis.classification.classification === 'Normal' ? '✓' :\n                     enhancedAnalysis.classification.classification === 'Kurang Normal' ? '⚠' : '⚠'}\n                  </div>\n                  <h3 className=\"text-xl font-bold mb-2\">{enhancedAnalysis.classification.classification}</h3>\n                  <p className=\"text-sm text-muted-foreground mb-4\">\n                    Confidence: {(enhancedAnalysis.classification.confidence * 100).toFixed(1)}%\n                  </p>\n                </div>\n                \n                <div className=\"space-y-2\">\n                  <h4 className=\"font-semibold\">Probabilitas Kelas:</h4>\n                  {Object.entries(enhancedAnalysis.classification.probabilities).map(([label, prob]) => (\n                    <div key={label} className=\"flex items-center justify-between\">\n                      <span className=\"text-sm\">{label}</span>\n                      <div className=\"flex items-center space-x-2\">\n                        <Progress value={(prob as number) * 100} className=\"w-20 h-2\" />\n                        <span className=\"text-sm font-mono w-12\">\n                          {((prob as number) * 100).toFixed(1)}%\n                        </span>\n                      </div>\n                    </div>\n                  ))}\n                </div>\n              </div>\n            </CardContent>\n          </Card>\n\n          {/* Feature Importance */}\n          <Card className=\"glass-card bg-card/40 backdrop-blur-lg border-border/50\">\n            <CardHeader>\n              <CardTitle className=\"flex items-center text-xl\">\n                <BarChart3 className=\"w-5 h-5 mr-2 text-accent\" />\n                Kontribusi Parameter\n              </CardTitle>\n            </CardHeader>\n            <CardContent>\n              <div className=\"space-y-4\">\n                <p className=\"text-sm text-muted-foreground mb-4\">\n                  Seberapa besar pengaruh setiap parameter dalam keputusan klasifikasi:\n                </p>\n                \n                {enhancedAnalysis.featureImportance.map((item: any, index: number) => (\n                  <div key={item.feature} className=\"flex items-center justify-between\">\n                    <div className=\"flex items-center space-x-2\">\n                      <Badge \n                        variant={index === 0 ? \"default\" : \"secondary\"}\n                        className=\"w-6 h-6 text-xs flex items-center justify-center p-0\"\n                      >\n                        {index + 1}\n                      </Badge>\n                      <div>\n                        <span className=\"font-medium text-sm\">{item.feature}</span>\n                        <p className=\"text-xs text-muted-foreground\">Nilai: {item.value}</p>\n                      </div>\n                    </div>\n                    <div className=\"flex items-center space-x-2\">\n                      <Progress \n                        value={item.impact} \n                        className=\"w-16 h-2\"\n                      />\n                      <span className=\"text-sm font-mono w-12\">\n                        {item.impact.toFixed(1)}%\n                      </span>\n                    </div>\n                  </div>\n                ))}\n                \n                <div className=\"mt-4 pt-4 border-t border-border/30\">\n                  <p className=\"text-xs text-muted-foreground\">\n                    Parameter dengan kontribusi tinggi memberikan pengaruh besar dalam klasifikasi\n                  </p>\n                </div>\n              </div>\n            </CardContent>\n          </Card>\n        </div>\n      )}\n\n      {/* Real-time Chart */}\n      <RealTimeChart \n        data={historicalData} \n        currentData={currentData}\n        className=\"mb-6\"\n      />\n\n      {/* Database Analytics */}\n      {dbData.analytics && (\n        <Card className=\"glass-card bg-card/40 backdrop-blur-lg border-border/50\">\n          <CardHeader>\n            <CardTitle className=\"flex items-center text-xl\">\n              <TrendingUp className=\"w-5 h-5 mr-2 text-accent\" />\n              Statistik Database\n            </CardTitle>\n          </CardHeader>\n          <CardContent>\n            <div className=\"grid grid-cols-2 md:grid-cols-4 gap-4\">\n              <div className=\"text-center p-4 bg-primary/5 rounded-lg\">\n                <p className=\"text-2xl font-bold text-primary\">{dbData.analytics.total_records}</p>\n                <p className=\"text-sm text-muted-foreground\">Total Rekaman</p>\n              </div>\n              \n              <div className=\"text-center p-4 bg-green-400/5 rounded-lg\">\n                <p className=\"text-2xl font-bold text-green-400\">\n                  {dbData.analytics.classification_distribution?.Normal || 0}\n                </p>\n                <p className=\"text-sm text-muted-foreground\">Normal</p>\n              </div>\n              \n              <div className=\"text-center p-4 bg-yellow-400/5 rounded-lg\">\n                <p className=\"text-2xl font-bold text-yellow-400\">\n                  {dbData.analytics.classification_distribution?.['Kurang Normal'] || 0}\n                </p>\n                <p className=\"text-sm text-muted-foreground\">Kurang Normal</p>\n              </div>\n              \n              <div className=\"text-center p-4 bg-red-400/5 rounded-lg\">\n                <p className=\"text-2xl font-bold text-red-400\">\n                  {dbData.analytics.classification_distribution?.Berbahaya || 0}\n                </p>\n                <p className=\"text-sm text-muted-foreground\">Berbahaya</p>\n              </div>\n            </div>\n            \n            {dbData.analytics.averages && (\n              <div className=\"mt-6 grid grid-cols-2 md:grid-cols-5 gap-4\">\n                <div className=\"text-center\">\n                  <p className=\"font-bold\">{parseFloat(dbData.analytics.averages.avg_suhu || '0').toFixed(1)}°C</p>\n                  <p className=\"text-xs text-muted-foreground\">Rata-rata Suhu</p>\n                </div>\n                <div className=\"text-center\">\n                  <p className=\"font-bold\">{parseFloat(dbData.analytics.averages.avg_bpm || '0').toFixed(0)}</p>\n                  <p className=\"text-xs text-muted-foreground\">Rata-rata BPM</p>\n                </div>\n                <div className=\"text-center\">\n                  <p className=\"font-bold\">{parseFloat(dbData.analytics.averages.avg_spo2 || '0').toFixed(1)}%</p>\n                  <p className=\"text-xs text-muted-foreground\">Rata-rata SpO2</p>\n                </div>\n                <div className=\"text-center\">\n                  <p className=\"font-bold\">{parseFloat(dbData.analytics.averages.avg_sys || '0').toFixed(0)}</p>\n                  <p className=\"text-xs text-muted-foreground\">Rata-rata Sistolik</p>\n                </div>\n                <div className=\"text-center\">\n                  <p className=\"font-bold\">{parseFloat(dbData.analytics.averages.avg_dia || '0').toFixed(0)}</p>\n                  <p className=\"text-xs text-muted-foreground\">Rata-rata Diastolik</p>\n                </div>\n              </div>\n            )}\n          </CardContent>\n        </Card>\n      )}\n    </div>\n  );\n}
+  
+  // Use Firebase data only (simplified for thesis project)
+  const currentData = firebaseData.currentData;
+  const historicalData = firebaseData.historicalData;
+  const isLoading = firebaseData.loading;
+  const isConnected = firebaseData.isConnected;
+
+  // Enhanced classification with feature importance
+  const [enhancedAnalysis, setEnhancedAnalysis] = useState<any>(null);
+  
+  useEffect(() => {
+    if (currentData) {
+      try {
+        const classification = classifyHeartCondition({
+          suhu: currentData.suhu,
+          bpm: currentData.bpm,
+          spo2: currentData.spo2,
+          tekanan_sys: currentData.tekanan_sys,
+          tekanan_dia: currentData.tekanan_dia,
+          signal_quality: currentData.signal_quality
+        });
+        
+        const featureImportance = calculateFeatureImportance({
+          suhu: currentData.suhu,
+          bpm: currentData.bpm,
+          spo2: currentData.spo2,
+          tekanan_sys: currentData.tekanan_sys,
+          tekanan_dia: currentData.tekanan_dia,
+          signal_quality: currentData.signal_quality
+        });
+        
+        setEnhancedAnalysis({ classification, featureImportance });
+      } catch (error) {
+        console.error('Analysis error:', error);
+      }
+    }
+  }, [currentData]);
+
+  if (isLoading) {
+    return (
+      <div className={cn("flex items-center justify-center p-12", className)}>
+        <Card className="glass-card bg-card/40 backdrop-blur-lg p-8">
+          <CardContent className="flex items-center space-x-3">
+            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+            <span className="text-lg font-medium">Memuat data monitoring...</span>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn("space-y-6", className)}>
+      {/* Connection Status */}
+      <Card className="glass-card bg-card/40 backdrop-blur-lg border-border/50">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-lg">Status Koneksi Firebase</h3>
+            <div className="flex items-center space-x-2">
+              <div className={cn(
+                "w-3 h-3 rounded-full",
+                isConnected ? "bg-green-400 animate-pulse" : "bg-red-400"
+              )} />
+              <span className="text-sm text-muted-foreground">
+                {isConnected ? "Terhubung" : "Terputus"}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Real-time Parameters Grid */}
+      {currentData && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Temperature */}
+          <Card className="glass-card bg-gradient-to-br from-red-400/10 to-orange-400/10 backdrop-blur-lg border-border/50">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-gradient-to-br from-red-400/20 to-orange-400/20 rounded-xl">
+                  <Thermometer className="w-6 h-6 text-red-400" />
+                </div>
+                <Badge 
+                  variant={currentData.suhu >= 36.1 && currentData.suhu <= 37.2 ? "default" : "destructive"}
+                >
+                  {currentData.suhu >= 36.1 && currentData.suhu <= 37.2 ? "Normal" : "Abnormal"}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-3xl font-bold">{currentData.suhu.toFixed(1)}°C</p>
+                <p className="text-sm text-muted-foreground">Suhu Tubuh</p>
+                <p className="text-xs text-muted-foreground mt-1">Normal: 36.1-37.2°C</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Heart Rate */}
+          <Card className="glass-card bg-gradient-to-br from-red-500/10 to-pink-500/10 backdrop-blur-lg border-border/50">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-gradient-to-br from-red-500/20 to-pink-500/20 rounded-xl">
+                  <Heart className="w-6 h-6 text-red-500" fill="currentColor" />
+                </div>
+                <Badge 
+                  variant={currentData.bpm >= 60 && currentData.bpm <= 100 ? "default" : "destructive"}
+                >
+                  {currentData.bpm >= 60 && currentData.bpm <= 100 ? "Normal" : "Abnormal"}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-3xl font-bold">{currentData.bpm}</p>
+                <p className="text-sm text-muted-foreground">Detak Jantung (BPM)</p>
+                <p className="text-xs text-muted-foreground mt-1">Normal: 60-100 BPM</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* SpO2 */}
+          <Card className="glass-card bg-gradient-to-br from-blue-400/10 to-cyan-400/10 backdrop-blur-lg border-border/50">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-gradient-to-br from-blue-400/20 to-cyan-400/20 rounded-xl">
+                  <Droplets className="w-6 h-6 text-blue-400" />
+                </div>
+                <Badge 
+                  variant={currentData.spo2 >= 95 ? "default" : "destructive"}
+                >
+                  {currentData.spo2 >= 95 ? "Normal" : "Rendah"}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-3xl font-bold">{currentData.spo2}%</p>
+                <p className="text-sm text-muted-foreground">Kadar Oksigen (SpO2)</p>
+                <p className="text-xs text-muted-foreground mt-1">Normal: ≥95%</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Blood Pressure */}
+          <Card className="glass-card bg-gradient-to-br from-purple-400/10 to-indigo-400/10 backdrop-blur-lg border-border/50">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-gradient-to-br from-purple-400/20 to-indigo-400/20 rounded-xl">
+                  <Activity className="w-6 h-6 text-purple-400" />
+                </div>
+                <Badge 
+                  variant={(
+                    currentData.tekanan_sys >= 90 && currentData.tekanan_sys <= 120 &&
+                    currentData.tekanan_dia >= 60 && currentData.tekanan_dia <= 80
+                  ) ? "default" : "destructive"}
+                >
+                  {(
+                    currentData.tekanan_sys >= 90 && currentData.tekanan_sys <= 120 &&
+                    currentData.tekanan_dia >= 60 && currentData.tekanan_dia <= 80
+                  ) ? "Normal" : "Abnormal"}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-3xl font-bold">{currentData.tekanan_sys}/{currentData.tekanan_dia}</p>
+                <p className="text-sm text-muted-foreground">Tekanan Darah (mmHg)</p>
+                <p className="text-xs text-muted-foreground mt-1">Normal: 90-120/60-80</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Enhanced Naive Bayes Analysis */}
+      {enhancedAnalysis && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Classification Result */}
+          <Card className="glass-card bg-gradient-to-br from-primary/5 to-accent/5 backdrop-blur-lg border-border/50">
+            <CardHeader>
+              <CardTitle className="flex items-center text-xl">
+                <Brain className="w-5 h-5 mr-2 text-primary" />
+                Hasil Klasifikasi Naive Bayes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="text-center">
+                  <div className={cn(
+                    "w-24 h-24 mx-auto mb-4 rounded-full flex items-center justify-center text-2xl font-bold",
+                    enhancedAnalysis.classification.classification === 'Normal' 
+                      ? "bg-green-400/20 text-green-400" 
+                      : enhancedAnalysis.classification.classification === 'Kurang Normal'
+                      ? "bg-yellow-400/20 text-yellow-400"
+                      : "bg-red-400/20 text-red-400"
+                  )}>
+                    {enhancedAnalysis.classification.classification === 'Normal' ? '✓' :
+                     enhancedAnalysis.classification.classification === 'Kurang Normal' ? '⚠' : '⚠'}
+                  </div>
+                  <h3 className="text-xl font-bold mb-2">{enhancedAnalysis.classification.classification}</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Confidence: {(enhancedAnalysis.classification.confidence * 100).toFixed(1)}%
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <h4 className="font-semibold">Probabilitas Kelas:</h4>
+                  {Object.entries(enhancedAnalysis.classification.probabilities).map(([label, prob]) => (
+                    <div key={label} className="flex items-center justify-between">
+                      <span className="text-sm">{label}</span>
+                      <div className="flex items-center space-x-2">
+                        <Progress value={(prob as number) * 100} className="w-20 h-2" />
+                        <span className="text-sm font-mono w-12">
+                          {((prob as number) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Feature Importance */}
+          <Card className="glass-card bg-card/40 backdrop-blur-lg border-border/50">
+            <CardHeader>
+              <CardTitle className="flex items-center text-xl">
+                <BarChart3 className="w-5 h-5 mr-2 text-accent" />
+                Kontribusi Parameter
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Seberapa besar pengaruh setiap parameter dalam keputusan klasifikasi:
+                </p>
+                
+                {enhancedAnalysis.featureImportance && enhancedAnalysis.featureImportance.map((item: any, index: number) => (
+                  <div key={item.feature} className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Badge 
+                        variant={index === 0 ? "default" : "secondary"}
+                        className="w-6 h-6 text-xs flex items-center justify-center p-0"
+                      >
+                        {index + 1}
+                      </Badge>
+                      <div>
+                        <span className="font-medium text-sm">{item.feature}</span>
+                        <p className="text-xs text-muted-foreground">Nilai: {item.value}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Progress 
+                        value={item.impact} 
+                        className="w-16 h-2"
+                      />
+                      <span className="text-sm font-mono w-12">
+                        {item.impact.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                
+                <div className="mt-4 pt-4 border-t border-border/30">
+                  <p className="text-xs text-muted-foreground">
+                    Parameter dengan kontribusi tinggi memberikan pengaruh besar dalam klasifikasi
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Real-time Chart */}
+      <RealTimeChart 
+        data={historicalData} 
+        currentData={currentData}
+        className="mb-6"
+      />
+    </div>
+  );
+}
