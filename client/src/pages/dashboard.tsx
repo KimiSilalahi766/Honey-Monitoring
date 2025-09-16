@@ -73,6 +73,7 @@ export default function Dashboard() {
   const [enhancedClassification, setEnhancedClassification] = useState<any>(null);
   const [classificationLoading, setClassificationLoading] = useState(false);
   
+  
   useEffect(() => {
     if (!currentData) {
       setEnhancedClassification(null);
@@ -327,7 +328,7 @@ export default function Dashboard() {
                       <div className="text-xs text-muted-foreground">
                         <div>Confidence: {(enhancedClassification.confidence * 100).toFixed(1)}%</div>
                         <div>Source: Firebase Real-time</div>
-                        <div>Sensor: SPG010, MAX30105, MLX90614</div>
+                        <div>Sensor: SPG010, MAX30102, MLX90614</div>
                         <div>Dataset: 79,540 samples EHR</div>
                       </div>
                     </div>

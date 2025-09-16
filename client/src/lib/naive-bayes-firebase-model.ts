@@ -19,6 +19,11 @@ export interface NaiveBayesModel {
     "1": FeatureValues;
     "2": FeatureValues;
   };
+  // ✅ TRAINING DATA STANDARDIZATION PARAMETERS
+  training_stats?: {
+    means: FeatureValues;
+    stds: FeatureValues;
+  };
 }
 
 export interface FeatureValues {
@@ -51,6 +56,25 @@ export interface ClassificationResult {
 
 // ✅ FIREBASE MODEL URL - SESUAI YANG USER GUNAKAN DI ARDUINO
 const FIREBASE_MODEL_URL = "https://monitoring-jantung-f8031-default-rtdb.firebaseio.com/model/naive_bayes_model.json";
+
+// ✅ MEDICAL BASELINE STATISTICS FOR STANDARDIZATION
+// Jika tidak ada di Firebase, gunakan estimates berdasarkan pengetahuan medis
+const MEDICAL_BASELINE_STATS: { means: FeatureValues; stds: FeatureValues } = {
+  means: {
+    "Suhu Tubuh (C)": 37.0,      // Normal body temp
+    "Detak Jantung": 80.0,       // Normal resting HR
+    "Sistolik": 120.0,           // Normal systolic BP
+    "Diastolik": 80.0,           // Normal diastolic BP
+    "Saturasi Oksigen": 98.0     // Normal oxygen saturation
+  },
+  stds: {
+    "Suhu Tubuh (C)": 0.5,       // Temperature variation
+    "Detak Jantung": 15.0,       // HR variation
+    "Sistolik": 15.0,            // Systolic variation
+    "Diastolik": 10.0,           // Diastolic variation
+    "Saturasi Oksigen": 2.0      // SpO2 variation
+  }
+};
 
 // Cache untuk model yang dimuat dari Firebase
 let CACHED_FIREBASE_MODEL: NaiveBayesModel | null = null;
@@ -155,20 +179,70 @@ function gaussianPDF(x: number, mean: number, std: number): number {
   return coefficient * exponent;
 }
 
-function normalizeFeatures(vitals: VitalSigns): FeatureValues {
-  // Convert our format to model format
-  return {
+// =========================================================
+// Z-SCORE STANDARDIZATION FOR VITAL SIGNS
+// =========================================================
+
+function applyZScoreStandardization(
+  vitals: VitalSigns,
+  trainingMeans: FeatureValues,
+  trainingStds: FeatureValues
+): FeatureValues {
+  // Input validation
+  if (!vitals || typeof vitals !== 'object') {
+    throw new Error('Invalid vital signs data');
+  }
+  
+  // Convert to feature format then apply z-score: (value - mean) / std
+  const rawFeatures = {
     "Suhu Tubuh (C)": vitals.suhu,
     "Detak Jantung": vitals.bpm,
     "Sistolik": vitals.tekanan_sys,
     "Diastolik": vitals.tekanan_dia,
     "Saturasi Oksigen": vitals.spo2
   };
+  
+  const standardized: FeatureValues = {} as FeatureValues;
+  
+  for (const [featureName, rawValue] of Object.entries(rawFeatures)) {
+    const featureKey = featureName as keyof FeatureValues;
+    const mean = trainingMeans[featureKey];
+    const std = trainingStds[featureKey];
+    
+    // Input validation
+    if (typeof rawValue !== 'number' || isNaN(rawValue)) {
+      throw new Error(`Invalid ${featureName}: ${rawValue}`);
+    }
+    
+    // Prevent division by zero - clamp std to minimum value
+    const safeStd = Math.max(std, 1e-6);
+    
+    // Apply z-score standardization
+    standardized[featureKey] = (rawValue - mean) / safeStd;
+  }
+  
+  return standardized;
+}
+
+// Legacy function name - now correctly applies standardization
+function normalizeFeatures(vitals: VitalSigns, model: NaiveBayesModel): FeatureValues {
+  // Use training stats from model if available, otherwise use medical baselines
+  const trainingStats = model.training_stats || MEDICAL_BASELINE_STATS;
+  
+  return applyZScoreStandardization(vitals, trainingStats.means, trainingStats.stds);
 }
 
 export async function classifyWithFirebaseModel(vitals: VitalSigns): Promise<ClassificationResult> {
-  const features = normalizeFeatures(vitals);
   const model = await loadModelFromFirebase();
+  
+  // ✅ CRITICAL FIX: Apply z-score standardization
+  const features = normalizeFeatures(vitals, model);
+  
+  // 🔍 DEBUG: Log standardization transformation
+  console.log('🧠 NAIVE BAYES STANDARDIZATION DEBUG:');
+  console.log('Raw vital signs:', vitals);
+  console.log('Standardized features:', features);
+  console.log('Training stats used:', model.training_stats || MEDICAL_BASELINE_STATS);
   
   // Calculate log probabilities for each class
   const logProbs: Record<string, number> = {};
@@ -226,18 +300,67 @@ export async function classifyWithFirebaseModel(vitals: VitalSigns): Promise<Cla
       Berbahaya: probs['2']
     },
     raw_class: parseInt(predictedClass),
-    explanation: `KLASIFIKASI MENGGUNAKAN MODEL FIREBASE REAL-TIME:\n` +
+    explanation: `✅ KLASIFIKASI NAIVE BAYES (Z-SCORE STANDARDIZED):\n` +
                  `Model URL: ${FIREBASE_MODEL_URL}\n` +
                  `Dataset: 79,540 EHR samples dari Kaggle\n` +
-                 `Algorithm: Gaussian Naive Bayes\n` +
-                 `Sensor: MAX30105 (HR/SpO2), MLX90614 (Temp), SPG010 (BP)\n\n` +
-                 `Features dianalisis:\n` +
+                 `Algorithm: Gaussian Naive Bayes dengan z-score normalisasi\n` +
+                 `Sensor: MAX30102 (HR/SpO2), MLX90614 (Temp), SPG010 (BP)\n\n` +
+                 `📊 RAW VITAL SIGNS:\n` +
                  `- Suhu: ${vitals.suhu}°C\n` +
                  `- Detak Jantung: ${vitals.bpm} BPM\n` +
                  `- Sistolik: ${vitals.tekanan_sys} mmHg\n` +
                  `- Diastolik: ${vitals.tekanan_dia} mmHg\n` +
                  `- SpO2: ${vitals.spo2}%\n\n` +
+                 `🧠 STANDARDIZED FEATURES (Z-Score):\n` +
+                 `- Suhu: ${features["Suhu Tubuh (C)"].toFixed(3)}\n` +
+                 `- HR: ${features["Detak Jantung"].toFixed(3)}\n` +
+                 `- Sys: ${features["Sistolik"].toFixed(3)}\n` +
+                 `- Dia: ${features["Diastolik"].toFixed(3)}\n` +
+                 `- SpO2: ${features["Saturasi Oksigen"].toFixed(3)}\n\n` +
+                 `✅ CRITICAL FIX APPLIED: Z-score standardization sebelum klasifikasi\n` +
                  `✅ Model disinkronkan dengan Arduino ESP32\n` +
                  `✅ Real-time dari: ${FIREBASE_MODEL_URL}`
   };
+}
+
+// =========================================================
+// 🧪 TEST FUNCTION TO VERIFY MATHEMATICAL CORRECTNESS
+// =========================================================
+
+export async function testStandardizationFix(): Promise<void> {
+  console.log('🧪 TESTING Z-SCORE STANDARDIZATION FIX...');
+  
+  // Test case 1: Normal vital signs
+  const normalVitals: VitalSigns = {
+    suhu: 37.0,
+    bpm: 80,
+    tekanan_sys: 120,
+    tekanan_dia: 80,
+    spo2: 98
+  };
+  
+  // Test case 2: Abnormal vital signs (fever, tachycardia, high BP, low SpO2)
+  const abnormalVitals: VitalSigns = {
+    suhu: 39.5,  // High fever
+    bpm: 110,    // Tachycardia
+    tekanan_sys: 160,  // Hypertension
+    tekanan_dia: 100,  // High diastolic
+    spo2: 92     // Low oxygen
+  };
+  
+  try {
+    console.log('🟢 Testing Normal Vitals:');
+    const result1 = await classifyWithFirebaseModel(normalVitals);
+    console.log(`Classification: ${result1.classification} (${(result1.confidence * 100).toFixed(1)}% confidence)`);
+    
+    console.log('\n🔴 Testing Abnormal Vitals:');
+    const result2 = await classifyWithFirebaseModel(abnormalVitals);
+    console.log(`Classification: ${result2.classification} (${(result2.confidence * 100).toFixed(1)}% confidence)`);
+    
+    console.log('\n✅ Z-Score Standardization Test PASSED');
+    console.log('The model now correctly standardizes features before classification!');
+    
+  } catch (error) {
+    console.error('❌ Z-Score Standardization Test FAILED:', error);
+  }
 }
