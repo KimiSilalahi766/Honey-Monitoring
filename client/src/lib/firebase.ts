@@ -1,20 +1,20 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase, ref, onValue, off, child, get } from 'firebase/database';
 import type { HeartData, HeartDataWithId } from '@shared/schema';
 
-// Firebase configuration
+// Firebase configuration - using ESP32 Arduino database
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyC_4FizusMK9ksaWcYXBmubsp3GGxuuX0g",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "monitoring-jantung-f8031.firebaseapp.com",
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://monitoring-jantung-f8031-default-rtdb.firebaseio.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "monitoring-jantung-f8031",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "monitoring-jantung-f8031.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:123456789:web:abcdef123456"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyB56eLVWtBYt6EN3-grFMvoW3mY2zV6Q-I",
+  authDomain: "heart-monitoring-20872.firebaseapp.com",
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://heart-monitoring-20872-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "heart-monitoring-20872",
+  storageBucket: "heart-monitoring-20872.appspot.com",
+  messagingSenderId: "123456789", 
+  appId: "1:123456789:web:abcdef123456"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase (prevent duplicate app initialization)
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const database = getDatabase(app);
 
 // Arduino data interface
@@ -35,20 +35,32 @@ interface ArduinoData {
 
 // Transform Arduino data to web app format
 const transformArduinoData = (arduinoData: ArduinoData, id: string = 'latest'): HeartDataWithId => {
-  // Convert Arduino millis() to proper timestamp
-  // Arduino waktu is millis() since boot, convert to real timestamp
+  // Convert Arduino timestamp to proper JavaScript timestamp
   let timestamp: number;
   
-  if (arduinoData.waktu > 1000000000000) {
+  // Check if we have waktu_baca (formatted datetime from Arduino)
+  if (arduinoData.waktu_baca) {
+    try {
+      // Parse the formatted datetime string (e.g., "2025-09-19 16:52:10")
+      const parsedDate = new Date(arduinoData.waktu_baca.replace(' ', 'T') + '+07:00'); // Add timezone
+      timestamp = parsedDate.getTime();
+      console.log(`📅 Using Arduino waktu_baca: ${arduinoData.waktu_baca} -> ${timestamp}`);
+    } catch (error) {
+      console.warn('Failed to parse waktu_baca, using fallback');
+      timestamp = Date.now();
+    }
+  } else if (arduinoData.waktu > 1000000000000) {
     // Already a proper timestamp in milliseconds (13 digits)
     timestamp = arduinoData.waktu;
+    console.log(`⏰ Using Arduino timestamp (ms): ${timestamp}`);
   } else if (arduinoData.waktu > 1000000000) {
-    // NTP epoch seconds (10 digits) - convert to milliseconds
+    // Unix epoch seconds (10 digits) - convert to milliseconds
     timestamp = arduinoData.waktu * 1000;
+    console.log(`⏰ Using Arduino timestamp (s): ${arduinoData.waktu} -> ${timestamp}`);
   } else {
-    // Arduino millis() - convert to approximate real timestamp
-    // millis() since boot, estimate current time minus millis
-    timestamp = Date.now() - arduinoData.waktu;
+    // Arduino millis() since boot - use current time as approximation
+    timestamp = Date.now();
+    console.log(`⏰ Arduino millis() detected, using current time: ${timestamp}`);
   }
   
   // ✅ LOG PREDIKSI FIREBASE MODEL jika ada
@@ -57,7 +69,7 @@ const transformArduinoData = (arduinoData: ArduinoData, id: string = 'latest'): 
     console.log(`🤖 Arduino Hardware Classification: ${arduinoData.status_kesehatan}`);
   }
   
-  return {
+  const transformedData = {
     id,
     timestamp,
     suhu: parseFloat(arduinoData.suhu_tubuh) || 36.5,
@@ -66,10 +78,23 @@ const transformArduinoData = (arduinoData: ArduinoData, id: string = 'latest'): 
     tekanan_sys: parseInt(arduinoData.tekanan_sistolik) || 120,
     tekanan_dia: parseInt(arduinoData.tekanan_diastolik) || 80,
     signal_quality: 85, // Default quality since Arduino doesn't send this
-    // ✅ PAKAI HASIL WEB MODEL (yang user upload), bukan Arduino classification
-    kondisi: arduinoData.status_kesehatan === 'Normal' ? 'Normal' : 
-             arduinoData.status_kesehatan === 'Kurang Normal' ? 'Kurang Normal' : 'Berbahaya'
+    // Use Arduino classification directly
+    kondisi: arduinoData.status_kesehatan || 'Normal'
   };
+  
+  console.log(`🔄 Transformed Arduino data:`, {
+    original: {
+      waktu: arduinoData.waktu,
+      waktu_baca: arduinoData.waktu_baca,
+      perangkat: arduinoData.perangkat
+    },
+    transformed: {
+      timestamp: transformedData.timestamp,
+      formattedTime: new Date(transformedData.timestamp).toLocaleString('id-ID')
+    }
+  });
+  
+  return transformedData;
 };
 
 // Real-time data listener (Arduino format)
@@ -117,47 +142,81 @@ export const subscribeToHeartData = (
   return unsubscribe;
 };
 
-// Get historical data (Arduino format)
+// Get historical data (Arduino format) - Enhanced for persistent storage
 export const getHistoricalData = async (
   limit: number = 100
 ): Promise<HeartDataWithId[]> => {
   try {
-    // Try to get from data_kesehatan first (Arduino), fallback to data_jantung
-    const arduinoRef = ref(database, 'data_kesehatan');
-    const snapshot = await get(arduinoRef);
+    const allData: HeartDataWithId[] = [];
     
-    if (snapshot.exists()) {
-      const data = snapshot.val();
-      
-      // Check if this is Arduino format data
-      if (data.terbaru) {
-        // Single latest entry from Arduino
-        const arduinoData = data.terbaru as ArduinoData;
-        const transformedData = transformArduinoData(arduinoData, 'latest');
-        return [transformedData];
-      } else {
-        // Multiple entries format
-        const entries = Object.entries(data)
-          .filter(([key]) => key !== 'terbaru') // Skip terbaru
-          .map(([key, value]: [string, any]) => {
-            if (value.suhu_tubuh !== undefined) {
-              // Arduino format
-              return transformArduinoData(value as ArduinoData, key);
-            } else {
-              // Web app format
-              return { id: key, ...value } as HeartDataWithId;
-            }
-          })
-          .sort((a, b) => b.timestamp - a.timestamp)
-          .slice(0, limit);
-        
-        return entries;
-      }
+    // 1. Get current/latest data from data_kesehatan/terbaru
+    const latestRef = ref(database, 'data_kesehatan/terbaru');
+    const latestSnapshot = await get(latestRef);
+    
+    if (latestSnapshot.exists()) {
+      const latestArduinoData = latestSnapshot.val() as ArduinoData;
+      const transformedLatest = transformArduinoData(latestArduinoData, 'latest-' + latestArduinoData.waktu);
+      allData.push(transformedLatest);
+      console.log('✅ Latest data from Arduino:', transformedLatest);
     }
     
-    return [];
+    // 2. Get historical entries from data_kesehatan/history (if exists)
+    const historyRef = ref(database, 'data_kesehatan/history');
+    const historySnapshot = await get(historyRef);
+    
+    if (historySnapshot.exists()) {
+      const historyData = historySnapshot.val();
+      const historyEntries = Object.entries(historyData)
+        .map(([key, value]: [string, any]) => {
+          if (value.suhu_tubuh !== undefined) {
+            return transformArduinoData(value as ArduinoData, key);
+          }
+          return null;
+        })
+        .filter(Boolean) as HeartDataWithId[];
+      
+      allData.push(...historyEntries);
+      console.log(`✅ ${historyEntries.length} historical records loaded`);
+    }
+    
+    // 3. Get additional entries from main data_kesehatan (excluding terbaru and history)
+    const mainRef = ref(database, 'data_kesehatan');
+    const mainSnapshot = await get(mainRef);
+    
+    if (mainSnapshot.exists()) {
+      const mainData = mainSnapshot.val();
+      const mainEntries = Object.entries(mainData)
+        .filter(([key]) => key !== 'terbaru' && key !== 'history') // Skip special keys
+        .map(([key, value]: [string, any]) => {
+          if (value && typeof value === 'object' && value.suhu_tubuh !== undefined) {
+            return transformArduinoData(value as ArduinoData, key);
+          }
+          return null;
+        })
+        .filter(Boolean) as HeartDataWithId[];
+      
+      allData.push(...mainEntries);
+      console.log(`✅ ${mainEntries.length} additional records from main path`);
+    }
+    
+    // 4. Remove duplicates and sort by timestamp (newest first)
+    const uniqueData = allData.reduce((acc, current) => {
+      const exists = acc.find(item => Math.abs(item.timestamp - current.timestamp) < 5000); // 5 seconds tolerance
+      if (!exists) {
+        acc.push(current);
+      }
+      return acc;
+    }, [] as HeartDataWithId[]);
+    
+    const sortedData = uniqueData
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, limit);
+    
+    console.log(`✅ Total unique historical data points: ${sortedData.length}`);
+    return sortedData;
+    
   } catch (error) {
-    console.error('Error fetching historical data:', error);
+    console.error('❌ Error fetching historical data:', error);
     return [];
   }
 };

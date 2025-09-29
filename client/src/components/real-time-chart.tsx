@@ -29,16 +29,19 @@ export function RealTimeChart({ data, currentData, className }: RealTimeChartPro
       const ctx = chartRef.current.getContext('2d');
       if (!ctx) return;
       
-      // Prepare data for last 20 readings
-      const chartData = data.slice(0, 20).reverse();
+      // Prepare data for last 30 readings (better visualization)
+      const chartData = data.slice(0, 30).reverse();
       const labels = chartData.map(item => {
         const date = new Date(item.timestamp);
-        return date.toLocaleTimeString('en-US', { 
+        return date.toLocaleTimeString('id-ID', { 
           hour12: false, 
           hour: '2-digit', 
-          minute: '2-digit' 
+          minute: '2-digit',
+          second: '2-digit'
         });
       });
+      
+      console.log('📊 Chart initialized with data points:', chartData.length);
 
       const ChartClass = Chart.default || Chart;
       chartInstance.current = new ChartClass(ctx, {
@@ -189,9 +192,12 @@ export function RealTimeChart({ data, currentData, className }: RealTimeChartPro
             }
           },
           animation: {
-            duration: 750,
+            duration: 1000,
             easing: 'easeInOutCubic'
-          }
+          },
+          // Enable real-time updates
+          responsive: true,
+          maintainAspectRatio: false
         }
       });
     });
@@ -203,14 +209,23 @@ export function RealTimeChart({ data, currentData, className }: RealTimeChartPro
     };
   }, [data]);
 
-  // Update chart with new data
+  // Update chart with new data (real-time animation)
   useEffect(() => {
     if (chartInstance.current && currentData) {
       const chart = chartInstance.current;
-      const newLabel = new Date(currentData.timestamp).toLocaleTimeString('en-US', {
+      const newLabel = new Date(currentData.timestamp).toLocaleTimeString('id-ID', {
         hour12: false,
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        second: '2-digit'
+      });
+
+      console.log('📈 Updating chart with new data:', {
+        timestamp: currentData.timestamp,
+        formattedTime: newLabel,
+        bpm: currentData.bpm,
+        spo2: currentData.spo2,
+        suhu: currentData.suhu
       });
 
       // Add new data point
@@ -219,15 +234,17 @@ export function RealTimeChart({ data, currentData, className }: RealTimeChartPro
       chart.data.datasets[1].data.push(currentData.spo2);
       chart.data.datasets[2].data.push(currentData.suhu);
 
-      // Keep only last 20 data points
-      if (chart.data.labels.length > 20) {
+      // Keep only last 30 data points for better visualization
+      const maxPoints = 30;
+      if (chart.data.labels.length > maxPoints) {
         chart.data.labels.shift();
         chart.data.datasets.forEach((dataset: any) => {
           dataset.data.shift();
         });
       }
 
-      chart.update('none');
+      // Smooth animation update
+      chart.update('active');
     }
   }, [currentData]);
 

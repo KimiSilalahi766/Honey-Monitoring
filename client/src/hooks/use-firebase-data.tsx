@@ -60,11 +60,25 @@ export const useFirebaseData = (): UseFirebaseDataReturn => {
       }
     );
 
-    // Subscribe to new data for alerts
+    // Subscribe to new data for alerts and persistent storage
     newDataUnsubscribe = subscribeToNewData(
       (data) => {
-        // Add to historical data
-        setHistoricalData(prev => [data, ...prev.slice(0, 49)]);
+        console.log('🔔 New data received for history:', data);
+        
+        // Add to historical data (avoid duplicates by checking timestamp)
+        setHistoricalData(prev => {
+          const exists = prev.find(item => 
+            Math.abs(item.timestamp - data.timestamp) < 5000 // 5 seconds tolerance
+          );
+          
+          if (!exists) {
+            const updated = [data, ...prev].slice(0, 100); // Keep last 100 records
+            console.log(`📊 Historical data updated: ${updated.length} total records`);
+            return updated;
+          }
+          
+          return prev;
+        });
         
         // Check for dangerous conditions and show alerts
         if (data.kondisi === 'Berbahaya') {

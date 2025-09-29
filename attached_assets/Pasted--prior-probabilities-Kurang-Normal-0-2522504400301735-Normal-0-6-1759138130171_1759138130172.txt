@@ -1,0 +1,91 @@
+{
+    "prior_probabilities": {
+        "Kurang Normal": 0.2522504400301735,
+        "Normal": 0.6802615036459643,
+        "Berbahaya": 0.0674880563238622
+    },
+    "likelihood": {
+        "suhu_tubuh": {
+            "Kurang Normal": {
+                "mean": 36.67934609250402,
+                "std_dev": 0.7164979200072196
+            },
+            "Normal": {
+                "mean": 36.66654099208968,
+                "std_dev": 0.3340595828743135
+            },
+            "Berbahaya": {
+                "mean": 37.24053651266729,
+                "std_dev": 1.1540748818293922
+            }
+        },
+        "detak_jantung": {
+            "Kurang Normal": {
+                "mean": 92.68959330143541,
+                "std_dev": 22.133114109529874
+            },
+            "Normal": {
+                "mean": 82.03201005396615,
+                "std_dev": 11.913655065813034
+            },
+            "Berbahaya": {
+                "mean": 105.26378539493294,
+                "std_dev": 22.692538016866703
+            }
+        },
+        "sistolik": {
+            "Kurang Normal": {
+                "mean": 140.24222488038276,
+                "std_dev": 23.69209846466016
+            },
+            "Normal": {
+                "mean": 133.91927256597916,
+                "std_dev": 22.96103172807116
+            },
+            "Berbahaya": {
+                "mean": 140.22727272727272,
+                "std_dev": 24.67112568342744
+            }
+        },
+        "diastolik": {
+            "Kurang Normal": {
+                "mean": 80.53528708133972,
+                "std_dev": 16.015653191999025
+            },
+            "Normal": {
+                "mean": 78.3812375249501,
+                "std_dev": 13.699795832827329
+            },
+            "Berbahaya": {
+                "mean": 80.18032786885246,
+                "std_dev": 16.794017294324465
+            }
+        },
+        "saturasi_oksigen": {
+            "Kurang Normal": {
+                "mean": 0.9719756778308486,
+                "std_dev": 0.034318150490507744
+            },
+            "Normal": {
+                "mean": 0.9822857987729848,
+                "std_dev": 0.01700960791541142
+            },
+            "Berbahaya": {
+                "mean": 0.9486438152011627,
+                "std_dev": 0.05657994715461956
+            }
+        }
+    },
+    "classes": [
+        "Kurang Normal",
+        "Normal",
+        "Berbahaya"
+    ],
+    "features": [
+        "suhu_tubuh",
+        "detak_jantung",
+        "sistolik",
+        "diastolik",
+        "saturasi_oksigen"
+    ]
+}
