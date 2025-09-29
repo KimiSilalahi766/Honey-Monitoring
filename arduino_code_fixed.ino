@@ -1,15 +1,3 @@
-/*
-=======================================================
-ARDUINO CODE YANG SUDAH DIPERBAIKI
-=======================================================
-Perbaikan:
-1. ✅ Sensor detak jantung: Deteksi ketika jari DITARUH (bukan dilepas)
-2. ✅ Timestamp: Gunakan NTP time yang proper  
-3. ✅ Tekanan darah: Selesai ketika alat selesai digunakan
-4. ✅ Firebase path: Match dengan web app (data_kesehatan/terbaru)
-=======================================================
-*/
-
 #include <Arduino.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -21,96 +9,141 @@ Perbaikan:
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <WiFiManager.h>     // ✅ Portal konfigurasi WiFi dari HP
+#include <WiFiManager.h>
 #include <math.h>
-#include <time.h>            // ✅ NTP time support
+#include <time.h>
 
-// ====== FIREBASE (RTDB REST) ======
-// ⚠️ PRODUCTION SECURITY NOTE:
-// 1. API keys should be rotated and stored securely
-// 2. Use device authentication tokens instead of API keys
-// 3. Tighten Firebase rules to restrict device write access
-const String FIREBASE_HOST = "monitoring-jantung-f8031-default-rtdb.firebaseio.com";
-const String FIREBASE_AUTH = "AIzaSyC_4FizusMK9ksaWcYXBmubsp3GGxuuX0g"; // ⚠️ ROTATE IN PRODUCTION
-const String DEVICE_ID = "ESP32_Monitor_Jantung";
+// ========= FIREBASE (akunmu) =========
+const String FIREBASE_HOST        = "heart-monitoring-20872-default-rtdb.asia-southeast1.firebasedatabase.app"; // TANPA https://
+const String FIREBASE_WEB_API_KEY = "AIzaSyB56eLVWtBYt6EN3-grFMvoW3mY2zV6Q-I"; // dari config web-mu
+const String DEVICE_ID            = "ESP32_Monitor_Jantung";
 
-// ====== NTP TIME SETTINGS ======
+// ========= TOKEN AUTH (didapat via Anonymous Sign-In) =========
+String g_idToken = "";
+String g_refreshToken = "";
+unsigned long g_tokenExpiryMs = 0; // millis() kapan token habis
+
+// ========= NTP TIME =========
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 25200; // UTC+7 (Indonesia) = 7*3600
+const long  gmtOffset_sec = 25200; // UTC+7
 const int   daylightOffset_sec = 0;
 
-// ====== KALIBRASI MEDIS ======
-const int KALIBRASI_SISTOLIK  = -15;  // kurangi 15
-const int KALIBRASI_DIASTOLIK = -10;  // kurangi 10
+// ========= KALIBRASI TENSI =========
+const int KALIBRASI_SISTOLIK  = -15;
+const int KALIBRASI_DIASTOLIK = -10;
 
-// ====== PIN & SERIAL ======
+// ========= PIN / SERIAL =========
 #define TOMBOL_PIN 4
 #define RXD2 16
 #define TXD2 17
 
-// ====== LCD & SENSOR ======
+// ========= LCD & SENSOR =========
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 Adafruit_MLX90614 mlx = Adafruit_MLX90614();
 MAX30105 sensorDetak;
 
-// ====== STATUS SISTEM ======
+// ========= STATUS =========
 bool wifiTerhubung = false;
-bool firebaseSiap = false;
-bool ntpSinkron = false;
+bool firebaseSiap  = false;
+bool ntpSinkron    = false;
 
-// ====== VAR TEKANAN DARAH (via Serial2) ======
+// ========= BUFFER TENSI =========
 char buff[64];
 bool b_read, b_discard;
 char discard;
 int i, j = 0;
 char final_buff[64];
 
-int nilaiSistolik = 0, nilaiDiastolik = 0, nilaiDetakDarah = 0;
+int   nilaiSistolik = 0, nilaiDiastolik = 0, nilaiDetakDarah = 0;
 float suhuTubuh = 0;
 
-// ====== VAR DETAK & SpO2 ======
+// ========= DETAK & SpO2 =========
 #define UKURAN_BUFFER 100
 uint32_t bufferIR[UKURAN_BUFFER];
 uint32_t bufferMerah[UKURAN_BUFFER];
 
-long  detakTerakhir = 0;
-float detakPerMenit = 0;
-int   detakJantungFinal = 0;
+const int   durasi_ms = 30000;   // 30 detik untuk BPM & SpO2
+long        lastBeat = 0;
+float       beatsPerMinute = 0;
+int         bpm_final = 0;
 
 int32_t spo2, heartRate;
 int8_t  spo2Valid, heartRateValid;
 int     spo2Final = 0;
+int     detakJantungFinal = 0;
 
-// ====== FALLBACK DATA ======
+// ========= FALLBACK DATA =========
 float suhuFallback = 36.5;
 int   detakFallback = 75;
-int   spo2Fallback = 98;
-int   sistolikFallback = 120;
-int   diastolikFallback = 80;
+int   spo2Fallback  = 98;
 
-// ====== KONFIG PORTAL WiFiManager ======
+// ========= WiFiManager =========
 #define CONFIG_AP_SSID  "ESP32-Monitor"
-#define CONFIG_AP_PASS  "12345678"   // min 8 char
+#define CONFIG_AP_PASS  "12345678"
 #define CONFIG_PORTAL_TIMEOUT_SEC 180
 
-// ====== PROTOTIPE ======
+// ========= NAIVE BAYES (Gaussian) =========
+// Kelas: 0=Normal, 1=Kurang Normal, 2=Berbahaya
+enum Feat { F_TEMP=0, F_HR=1, F_SYS=2, F_DIA=3, F_SPO2=4, F_COUNT=5 };
+#define NB_NUM_CLASSES 3
+const char* NB_LABELS[NB_NUM_CLASSES] = {"Normal","Kurang Normal","Berbahaya"};
+
+// prior
+float nbPrior[NB_NUM_CLASSES] = {
+  0.3602118430978124f,     // class 0 (Normal)
+  0.5515306763892381f,     // class 1 (Kurang Normal)
+  0.08825748051294946f     // class 2 (Berbahaya)
+};
+// means[class][feature]
+float nbMu[NB_NUM_CLASSES][F_COUNT] = {
+  {-0.0393393928f, -0.2824981677f, -0.5555745032f, -0.2816968045f,  0.2264257098f},   // 0
+  {-0.0231170089f,  0.0489745078f,  0.2348713005f,  0.0645013277f, -0.0292207967f},  // 1
+  { 0.3050195243f,  0.8469337871f,  0.7997711710f,  0.7466343231f, -0.7415241870f}   // 2
+};
+// std[class][feature]
+float nbSigma[NB_NUM_CLASSES][F_COUNT] = {
+  {0.5726792189f, 0.5968008763f, 0.4654107059f, 0.5386643648f, 0.4983629976f},  // 0
+  {1.0406749496f, 1.0626506689f, 1.0329016412f, 1.0758618001f, 0.9812888179f},  // 1
+  {1.7669391780f, 1.3276128640f, 1.2391668344f, 1.4163792613f, 1.8803182483f}   // 2
+};
+
+bool  nbLoaded = false;
+String nbLabel = "Normal";   // hasil label
+
+// ====== STANDARDIZER (z-score) ======
+float stdz_mean[F_COUNT] = { 36.8f, 80.0f, 120.0f, 80.0f, 98.0f };
+float stdz_std [F_COUNT] = {  0.7f, 15.0f,  12.0f, 10.0f,  1.5f };
+
+// ========= PROTOTIPE =========
 void connectWiFiViaManager();
 void setupNTPTime();
 void setupFirebase();
 void setupSensorSempurna();
 void tampilkanStatus();
 void ukurSuhuTubuh();
-void ukurDetakJantungFixed();        // ✅ FIXED VERSION
+void ukurDetakJantungFixed();
 void ukurKadarOksigen();
-void ukurTekananDarahFixed();        // ✅ FIXED VERSION
+void ukurTekananDarahFixed();
 void tampilkanHasil();
 String getStatusKesehatan();
-void kirimDataKeFirebaseFixed();     // ✅ FIXED VERSION
-String getNTPTimestamp();            // ✅ NEW NTP FUNCTION
-unsigned long getNTPTime();          // ✅ NEW NTP FUNCTION
+void kirimDataKeFirebaseFixed();
+String getNTPTimestamp();
+unsigned long getNTPTime();
 int hexToDec(char high, char low);
 int hexDigit(char c);
 String withAuth(const String& path);
+
+// NB helpers
+void   standardizeFeatures(float z[F_COUNT], float rawTemp, int rawHR, int rawSYS, int rawDIA, int rawSpO2);
+int    argmax3(float a, float b, float c);
+String predictNB_fromZ(const float z[F_COUNT]);
+String predictNB(float rawTemp, int rawHR, int rawSYS, int rawDIA, int rawSpO2);
+bool   loadNBModelFromFirebase();
+bool   loadStandardizerFromFirebase();
+
+// Firebase Auth helpers
+bool firebaseSignInAnon();
+bool firebaseRefreshTokenIfNeeded();
 
 // =========================================================
 
@@ -124,20 +157,27 @@ void setup() {
   lcd.init();
   lcd.backlight();
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Monitor Kesehatan");
-  lcd.setCursor(0, 1);
-  lcd.print("Init...");
+  lcd.setCursor(0, 0); lcd.print("Monitor Kesehatan");
+  lcd.setCursor(0, 1); lcd.print("Init...");
 
-  Serial.println("\n=== MONITOR KESEHATAN JANTUNG (FIXED) ===");
-  Serial.println("Perbaikan: Sensor & NTP Time");
-  Serial.println("Kalibrasi: Sistolik-15, Diastolik-10");
+  Serial.println("\n=== MONITOR + Gaussian Naive Bayes ===");
+  Serial.println("Kalibrasi tensi: SYS-15, DIA-10");
 
   connectWiFiViaManager();
 
   if (wifiTerhubung) {
-    setupNTPTime();  // ✅ Setup NTP first
+    setupNTPTime();
     setupFirebase();
+    if (firebaseSiap) {
+      bool okModel = loadNBModelFromFirebase();
+      bool okStd   = loadStandardizerFromFirebase(); // opsional
+      nbLoaded = okModel;
+      Serial.println(ntpSinkron ? "NTP: OK" : "NTP: Gagal");
+      if (!okModel) Serial.println("Model NB: pakai default firmware");
+      else          Serial.println("✅ Model NB termuat dari Firebase");
+      if (!okStd)   Serial.println("Standardizer: pakai default firmware");
+      else          Serial.println("✅ Standardizer termuat dari Firebase");
+    }
   }
 
   setupSensorSempurna();
@@ -149,43 +189,41 @@ void loop() {
     delay(300);
 
     lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Mulai Pengukuran");
-    lcd.setCursor(0, 1);
-    lcd.print("Mohon tunggu...");
-    delay(2000);
+    lcd.setCursor(0, 0); lcd.print("Mulai Pengukuran");
+    lcd.setCursor(0, 1); lcd.print("Mohon tunggu...");
+    delay(1200);
 
     ukurSuhuTubuh();
-    delay(800);
-    ukurDetakJantungFixed();      // ✅ FIXED
-    delay(800);
+    delay(500);
+    ukurDetakJantungFixed();
+    delay(500);
     ukurKadarOksigen();
-    delay(800);
-    ukurTekananDarahFixed();      // ✅ FIXED
-    delay(800);
+    delay(500);
+    ukurTekananDarahFixed();
+    delay(500);
+
+    // === PREDIKSI NB ===
+    nbLabel = predictNB(suhuTubuh, detakJantungFinal, nilaiSistolik, nilaiDiastolik, spo2Final);
+
     tampilkanHasil();
 
     if (wifiTerhubung && firebaseSiap) {
-      kirimDataKeFirebaseFixed();  // ✅ FIXED
+      kirimDataKeFirebaseFixed();
     } else {
-      Serial.println("Mode offline - data tersimpan lokal");
-      lcd.setCursor(0, 3);
-      lcd.print("Mode: Offline    ");
-      delay(1500);
+      Serial.println("Mode offline - data tidak dikirim");
+      lcd.setCursor(0, 3); lcd.print("Mode: Offline    ");
+      delay(800);
     }
 
     tampilkanStatus();
-    delay(1200);
+    delay(600);
   }
 
-  delay(60);
+  delay(40);
 }
 
-// =========================================================
-// ===============  WIFI MANAGER (PORTAL HP)  ==============
-// =========================================================
+// ================= WIFI MANAGER (portal HP) =================
 void connectWiFiViaManager() {
-  // Opsi reset WiFi: tahan tombol saat boot ~5 detik
   unsigned long t0 = millis();
   bool mauReset = false;
   if (digitalRead(TOMBOL_PIN) == LOW) {
@@ -201,15 +239,13 @@ void connectWiFiViaManager() {
 
   if (mauReset) {
     wm.resetSettings();
-    Serial.println("⚠️ Reset kredensial WiFi. Membuka portal konfigurasi...");
+    Serial.println("⚠️ Reset WiFi creds. Buka portal config...");
   }
 
   wm.setConfigPortalTimeout(CONFIG_PORTAL_TIMEOUT_SEC);
 
-  lcd.setCursor(0, 1);
-  lcd.print("WiFi cfg via HP  ");
-  lcd.setCursor(0, 2);
-  lcd.print("AP: ESP32-Monitor");
+  lcd.setCursor(0, 1); lcd.print("WiFi cfg via HP  ");
+  lcd.setCursor(0, 2); lcd.print("AP: ESP32-Monitor");
 
   bool res = wm.autoConnect(CONFIG_AP_SSID, CONFIG_AP_PASS);
 
@@ -217,77 +253,143 @@ void connectWiFiViaManager() {
     wifiTerhubung = true;
     Serial.println("✅ WiFi terhubung!");
     Serial.print("IP: "); Serial.println(WiFi.localIP());
-    lcd.setCursor(0, 1);
-    lcd.print("WiFi: Terhubung  ");
-    lcd.setCursor(0, 2);
-    lcd.print(WiFi.localIP().toString() + "    ");
+    lcd.setCursor(0, 1); lcd.print("WiFi: Terhubung  ");
+    lcd.setCursor(0, 2); lcd.print(WiFi.localIP().toString() + "    ");
   } else {
     wifiTerhubung = false;
-    Serial.println("❌ Gagal terhubung WiFi");
-    lcd.setCursor(0, 1);
-    lcd.print("WiFi: Gagal      ");
-    lcd.setCursor(0, 2);
-    lcd.print("Buka portal lg   ");
+    Serial.println("❌ Gagal WiFi");
+    lcd.setCursor(0, 1); lcd.print("WiFi: Gagal      ");
+    lcd.setCursor(0, 2); lcd.print("Buka portal lg   ");
   }
-  delay(1200);
+  delay(600);
 }
 
-// =========================================================
-// ================  NTP TIME SETUP (NEW)  ================
-// =========================================================
+// ================= NTP =================
 void setupNTPTime() {
-  lcd.setCursor(0, 3);
-  lcd.print("Sync NTP time... ");
-  Serial.println("Mengsinkronkan waktu NTP...");
+  lcd.setCursor(0, 3); lcd.print("Sync NTP time... ");
+  Serial.println("Sync NTP...");
 
-  // Configure time
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  
-  // Wait for time sync
+
   struct tm timeinfo;
   int attempts = 0;
   while (!getLocalTime(&timeinfo) && attempts < 10) {
-    Serial.println("Menunggu sinkronisasi NTP...");
-    delay(1000);
+    Serial.println("Menunggu NTP...");
+    delay(800);
     attempts++;
   }
-  
+
   if (getLocalTime(&timeinfo)) {
     ntpSinkron = true;
-    Serial.println("✅ NTP time berhasil disinkronkan");
-    Serial.println(&timeinfo, "Waktu: %A, %B %d %Y %H:%M:%S");
-    lcd.setCursor(0, 3);
-    lcd.print("NTP: OK          ");
+    Serial.println("✅ NTP sinkron");
+    lcd.setCursor(0, 3); lcd.print("NTP: OK          ");
   } else {
     ntpSinkron = false;
-    Serial.println("⚠️ NTP sync gagal, gunakan millis()");
-    lcd.setCursor(0, 3);
-    lcd.print("NTP: Gagal       ");
+    Serial.println("⚠️ NTP gagal, pakai millis()");
+    lcd.setCursor(0, 3); lcd.print("NTP: Gagal       ");
   }
-  delay(800);
+  delay(500);
 }
 
-// =========================================================
-// ==================  FIREBASE (TEST)  ====================
-// =========================================================
-void setupFirebase() {
-  lcd.setCursor(0, 3);
-  lcd.print("Tes Firebase...  ");
-  Serial.println("Menguji koneksi Firebase...");
-
-  WiFiClientSecure client;
-  // ⚠️ PRODUCTION: Enable proper TLS verification
-  // client.setInsecure(); // DISABLED - not secure for production
-  client.setInsecure(); // TODO: Replace with proper root CA certificate
-
+// ================= FIREBASE AUTH (Anonymous) =================
+bool firebaseSignInAnon() {
+  WiFiClientSecure client; client.setInsecure();
   HTTPClient http;
-  String testUrl = withAuth("/tes_koneksi.json");
+  String url = "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + FIREBASE_WEB_API_KEY;
+
+  if (!http.begin(client, url)) {
+    Serial.println("Auth: http.begin gagal");
+    return false;
+  }
+  http.addHeader("Content-Type", "application/json");
+  int code = http.POST("{\"returnSecureToken\":true}");
+  String payload = http.getString();
+  http.end();
+
+  if (code != 200) {
+    Serial.print("Auth: signUp gagal ("); Serial.print(code); Serial.println(")");
+    Serial.println(payload);
+    return false;
+  }
+
+  StaticJsonDocument<1024> doc;
+  DeserializationError err = deserializeJson(doc, payload);
+  if (err) {
+    Serial.println(String("Auth: JSON parse error: ") + err.c_str());
+    return false;
+  }
+
+  g_idToken      = doc["idToken"]      | "";
+  g_refreshToken = doc["refreshToken"] | "";
+  const char* expStr = doc["expiresIn"] | "3600";
+  unsigned long expSec = strtoul(expStr, nullptr, 10);
+  // refresh 60 detik lebih awal
+  g_tokenExpiryMs = millis() + (expSec > 60 ? (expSec - 60) : expSec) * 1000UL;
+
+  bool ok = (g_idToken.length() > 0);
+  Serial.println(ok ? "✅ Auth: Anonymous OK" : "❌ Auth: idToken kosong");
+  return ok;
+}
+
+bool firebaseRefreshTokenIfNeeded() {
+  if (g_idToken.length() == 0) return firebaseSignInAnon();
+  if (millis() < g_tokenExpiryMs) return true; // masih valid
+
+  if (g_refreshToken.length() == 0) return firebaseSignInAnon();
+
+  WiFiClientSecure client; client.setInsecure();
+  HTTPClient http;
+  String url = "https://securetoken.googleapis.com/v1/token?key=" + FIREBASE_WEB_API_KEY;
+
+  if (!http.begin(client, url)) return false;
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  String body = "grant_type=refresh_token&refresh_token=" + g_refreshToken;
+  int code = http.POST(body);
+  String payload = http.getString();
+  http.end();
+
+  if (code != 200) {
+    Serial.print("Auth: refresh gagal ("); Serial.print(code); Serial.println(")");
+    Serial.println(payload);
+    // coba login ulang
+    return firebaseSignInAnon();
+  }
+
+  StaticJsonDocument<1024> doc;
+  DeserializationError err = deserializeJson(doc, payload);
+  if (err) return false;
+
+  g_idToken      = doc["id_token"]      | g_idToken;
+  g_refreshToken = doc["refresh_token"] | g_refreshToken;
+  const char* expStr = doc["expires_in"] | "3600";
+  unsigned long expSec = strtoul(expStr, nullptr, 10);
+  g_tokenExpiryMs = millis() + (expSec > 60 ? (expSec - 60) : expSec) * 1000UL;
+
+  Serial.println("🔁 Auth: token diperbarui");
+  return true;
+}
+
+// ================= FIREBASE TEST =================
+void setupFirebase() {
+  lcd.setCursor(0, 3); lcd.print("Tes Firebase...  ");
+  Serial.println("Test Firebase...");
+
+  // Pastikan sudah punya idToken
+  if (!firebaseRefreshTokenIfNeeded()) {
+    firebaseSiap = false;
+    Serial.println("❌ Auth gagal");
+    lcd.setCursor(0, 3); lcd.print("Firebase: Auth NG");
+    return;
+  }
+
+  WiFiClientSecure client; client.setInsecure();
+  HTTPClient http;
+  String testUrl = withAuth("/tes_koneksi.json"); // akan menjadi https://host/tes_koneksi.json?auth=ID_TOKEN
 
   if (!http.begin(client, testUrl)) {
     Serial.println("❌ http.begin gagal");
     firebaseSiap = false;
-    lcd.setCursor(0, 3);
-    lcd.print("Firebase: Gagal  ");
+    lcd.setCursor(0, 3); lcd.print("Firebase: Gagal  ");
     return;
   }
 
@@ -296,242 +398,139 @@ void setupFirebase() {
   int kodeResponse = http.PUT(testData);
 
   if (kodeResponse > 0 && (kodeResponse == 200 || kodeResponse == 204)) {
-    String response = http.getString();
-    Serial.println("✅ Firebase OK, kode: " + String(kodeResponse));
     firebaseSiap = true;
-    lcd.setCursor(0, 3);
-    lcd.print("Firebase: OK     ");
+    Serial.println("✅ Firebase OK");
+    lcd.setCursor(0, 3); lcd.print("Firebase: OK     ");
   } else {
-    Serial.println("❌ Firebase gagal, kode: " + String(kodeResponse));
     firebaseSiap = false;
-    lcd.setCursor(0, 3);
-    lcd.print("Firebase: Gagal  ");
+    Serial.println("❌ Firebase gagal, kode: " + String(kodeResponse));
+    lcd.setCursor(0, 3); lcd.print("Firebase: Gagal  ");
   }
 
   http.end();
-
-  // Bersihkan data tes
+  // bersihkan key uji
   if (firebaseSiap) {
-    if (http.begin(client, testUrl)) {
-      http.sendRequest("DELETE");
-      http.end();
-    }
+    if (http.begin(client, testUrl)) { http.sendRequest("DELETE"); http.end(); }
   }
-
-  delay(800);
 }
 
-// =========================================================
-// ==================  SENSOR INIT / OK  ===================
-// =========================================================
+// ================= SENSOR INIT =================
 void setupSensorSempurna() {
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Siapkan sensor...");
+  lcd.setCursor(0, 0); lcd.print("Siapkan sensor...");
 
-  // MLX90614 (suhu)
   bool mlxBerhasil = false;
-  for (int coba = 0; coba < 3; coba++) {
-    if (mlx.begin()) { mlxBerhasil = true; break; }
-    Serial.println("MLX90614 coba ke-" + String(coba + 1));
-    delay(300);
-  }
-  if (mlxBerhasil) {
-    Serial.println("✅ Sensor suhu siap");
-    lcd.setCursor(0, 1); lcd.print("Sensor suhu: OK   ");
-  } else {
-    Serial.println("⚠️ Sensor suhu fallback");
-    lcd.setCursor(0, 1); lcd.print("Suhu: Fallback    ");
-  }
+  for (int coba = 0; coba < 3; coba++) { if (mlx.begin()) { mlxBerhasil = true; break; } delay(200); }
+  if (mlxBerhasil) { Serial.println("✅ MLX90614 OK"); lcd.setCursor(0, 1); lcd.print("Sensor suhu: OK   "); }
+  else             { Serial.println("⚠️ MLX90614 fallback"); lcd.setCursor(0, 1); lcd.print("Suhu: Fallback    "); }
 
-  // MAX30105 (detak & SpO2)
   bool maxBerhasil = false;
-  for (int coba = 0; coba < 3; coba++) {
-    if (sensorDetak.begin(Wire, I2C_SPEED_STANDARD)) { maxBerhasil = true; break; }
-    Serial.println("MAX30105 coba ke-" + String(coba + 1));
-    delay(300);
-  }
+  for (int coba = 0; coba < 3; coba++) { if (sensorDetak.begin(Wire, I2C_SPEED_STANDARD)) { maxBerhasil = true; break; } delay(200); }
   if (maxBerhasil) {
-    sensorDetak.setup(); // default config
+    sensorDetak.setup();
     sensorDetak.setPulseAmplitudeRed(0x3F);
     sensorDetak.setPulseAmplitudeIR(0x3F);
-    Serial.println("✅ Sensor detak siap");
+    Serial.println("✅ MAX30105 OK");
     lcd.setCursor(0, 2); lcd.print("Detak/SpO2: OK    ");
   } else {
-    Serial.println("⚠️ Detak/SpO2 fallback");
+    Serial.println("⚠️ MAX30105 fallback");
     lcd.setCursor(0, 2); lcd.print("Detak: Fallback   ");
   }
 
-  lcd.setCursor(0, 3);
-  lcd.print("Semua: Siap       ");
-  delay(900);
-}
-
-// =========================================================
-// ===================  TAMPILKAN STATUS  =================
-// =========================================================
-void tampilkanStatus() {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Monitor Siap      ");
-  lcd.setCursor(0, 1);
-  lcd.print("WiFi: ");
-  lcd.print(wifiTerhubung ? "OK     " : "Offline");
-  lcd.setCursor(0, 2);
-  lcd.print("NTP: ");
-  lcd.print(ntpSinkron ? "Sync    " : "Manual ");
-  lcd.setCursor(0, 3);
-  lcd.print("Tekan tombol biru ");
-}
-
-// =========================================================
-// ====================  UKUR SUHU TUBUH  =================
-// =========================================================
-void ukurSuhuTubuh() {
-  unsigned long mulai = millis();
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Ukur suhu tubuh   ");
-
-  float totalSuhu = 0;
-  int hitungSuhu = 0;
-  bool sensorBerfungsi = true;
-
-  Serial.println("=== MENGUKUR SUHU TUBUH ===");
-
-  while (millis() - mulai < 15000) { // 15 detik
-    float s = mlx.readObjectTempC();
-
-    if (s > 10.0 && s < 50.0) {
-      totalSuhu += s;
-      hitungSuhu++;
-      sensorBerfungsi = true;
-      Serial.println("Suhu valid: " + String(s, 1) + "C");
-    } else {
-      sensorBerfungsi = false;
-    }
-
-    if (hitungSuhu > 0) suhuTubuh = totalSuhu / hitungSuhu;
-    else                suhuTubuh = suhuFallback;
-
-    lcd.setCursor(0, 1);
-    lcd.print("Suhu: " + String(suhuTubuh, 1) + "C    ");
-    lcd.setCursor(0, 2);
-    lcd.print("Waktu: " + String((millis() - mulai) / 1000) + "/15s ");
-    lcd.setCursor(0, 3);
-    lcd.print(sensorBerfungsi ? "Status: Normal   " : "Status: Estimasi ");
-
-    delay(700);
-  }
-
-  if (hitungSuhu == 0) {
-    suhuTubuh = suhuFallback;
-    Serial.println("⚠️ Menggunakan suhu estimasi: " + String(suhuTubuh, 1) + "C");
-  }
-
-  Serial.println("Hasil suhu: " + String(suhuTubuh, 1) + "C");
+  lcd.setCursor(0, 3); lcd.print("Semua: Siap       ");
   delay(500);
 }
 
-// =========================================================
-// ===============  UKUR DETAK JANTUNG (FIXED)  ===========
-// =========================================================
-void ukurDetakJantungFixed() {
-  int detik = 0;
-  unsigned long mulai = millis();
-  unsigned long tampilTerakhir = millis();
-  int detakTerdeteksi = 0;
-  bool jariTerdeteksi = false;
-
+// ================= STATUS =================
+void tampilkanStatus() {
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("LETAKKAN JARI     ");
-  lcd.setCursor(0, 1);
-  lcd.print("di sensor MAX30105");
-  delay(1000);
+  lcd.setCursor(0, 0); lcd.print("Monitor Siap      ");
+  lcd.setCursor(0, 1); lcd.print("WiFi: "); lcd.print(wifiTerhubung ? "OK     " : "Offline");
+  lcd.setCursor(0, 2); lcd.print("NTP: ");  lcd.print(ntpSinkron ? "Sync    " : "Manual ");
+  lcd.setCursor(0, 3); lcd.print("Tekan tombol biru ");
+}
 
-  Serial.println("=== MENGUKUR DETAK JANTUNG (FIXED) ===");
-  Serial.println("✅ PERBAIKAN: Deteksi ketika jari DITARUH");
-  
-  detakJantungFinal = 0;
-  detakTerakhir = millis();
+// ================= SUHU (LCD & Serial sama) =================
+void ukurSuhuTubuh() {
+  unsigned long mulai = millis();
+  lcd.clear();
+  lcd.setCursor(0, 0); lcd.print("Ukur suhu tubuh   ");
 
-  while (millis() - mulai < 30000) { // 30 detik
-    sensorDetak.check(); // penting untuk isi FIFO
+  float totalSuhu = 0; int hitungSuhu = 0; bool sensorOK = false;
+  unsigned long lastPrint = 0;
 
-    long nilaiIR = 10000; // default rendah
-    if (sensorDetak.available()) {
-      nilaiIR = sensorDetak.getIR();
-      sensorDetak.nextSample();
+  Serial.println("=== SUHU TUBUH (15s) ===");
+
+  while (millis() - mulai < 15000) {
+    float s = mlx.readObjectTempC();
+    if (s > 10.0 && s < 50.0) { totalSuhu += s; hitungSuhu++; sensorOK = true; }
+    else                      { sensorOK = false; }
+
+    suhuTubuh = (hitungSuhu > 0) ? (totalSuhu / hitungSuhu) : suhuFallback;
+
+    if (millis() - lastPrint >= 1000) {
+      lastPrint = millis();
+      lcd.setCursor(0, 1); lcd.print("Suhu: " + String(suhuTubuh, 1) + "C    ");
+      lcd.setCursor(0, 2); lcd.print("Waktu: " + String((millis() - mulai) / 1000) + "/15s ");
+      lcd.setCursor(0, 3); lcd.print(sensorOK ? "Status: Normal   " : "Status: Estimasi ");
+      Serial.println("Suhu: " + String(suhuTubuh, 1) + "C");
     }
-
-    // ✅ PERBAIKAN: Logika deteksi JARI DITARUH (IR tinggi = jari ada)
-    if (nilaiIR > 50000) {  // ✅ FIXED: Jari DITARUH = IR tinggi
-      jariTerdeteksi = true;
-      
-      if (checkForBeat(nilaiIR)) {
-        long delta = millis() - detakTerakhir;
-        detakTerakhir = millis();
-        detakPerMenit = 60.0 / (delta / 1000.0);
-        
-        if (detakPerMenit >= 50 && detakPerMenit <= 150) {
-          detakJantungFinal = (int)detakPerMenit;
-          detakTerdeteksi++;
-          Serial.println("✅ Detak sensor: " + String(detakJantungFinal) + " BPM");
-        }
-      }
-    } else {  // ✅ FIXED: Jari DILEPAS = IR rendah
-      jariTerdeteksi = false;
-      // Gunakan fallback hanya jika belum ada data sama sekali
-      if (detakJantungFinal == 0) {
-        detakJantungFinal = detakFallback;
-        Serial.println("⚠️ Jari belum diletakkan, gunakan fallback: " + String(detakJantungFinal) + " BPM");
-      }
-    }
-
-    if (millis() - tampilTerakhir >= 1000 && detik < 30) {
-      detik++;
-      tampilTerakhir += 1000;
-
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      if (jariTerdeteksi) {
-        lcd.print("✅ JARI TERDETEKSI");
-        lcd.setCursor(0, 1);
-        lcd.print("Detak: " + String(detakJantungFinal) + " BPM");
-      } else {
-        lcd.print("❌ LETAKKAN JARI");
-        lcd.setCursor(0, 1);
-        lcd.print("IR: " + String(nilaiIR) + " (<50k)");
-      }
-      
-      lcd.setCursor(0, 2);
-      lcd.print("Terdeteksi: " + String(detakTerdeteksi) + "   ");
-      lcd.setCursor(0, 3);
-      lcd.print("Waktu: " + String(detik) + "/30s  ");
-    }
-
     delay(40);
   }
 
-  Serial.println("✅ Hasil detak jantung: " + String(detakJantungFinal) + " BPM");
-  Serial.println("Jari terdeteksi: " + String(jariTerdeteksi ? "YA" : "TIDAK"));
-  Serial.println("Total detak valid: " + String(detakTerdeteksi));
+  if (hitungSuhu == 0) { suhuTubuh = suhuFallback; Serial.println("⚠️ Estimasi suhu: " + String(suhuTubuh, 1) + "C"); }
+
+  Serial.println("Hasil suhu: " + String(suhuTubuh, 1) + "C");
+  delay(300);
 }
 
-// =========================================================
-// ==================  UKUR KADAR OKSIGEN  ================
-// =========================================================
+// ================= BPM (30s) =================
+void ukurDetakJantungFixed() {
+  int detik = 0; unsigned long start = millis(); unsigned long lastPrint = millis();
+  bpm_final = 0; lastBeat = 0;
+
+  lcd.clear();
+  lcd.setCursor(0, 0); lcd.print("Deteksi BPM: 30s ");
+  delay(300);
+
+  Serial.println("=== BPM (30s) ===");
+
+  while (millis() - start < durasi_ms) {
+    sensorDetak.check();
+    long irValue = sensorDetak.getIR();
+
+    if (checkForBeat(irValue)) {
+      long delta = millis() - lastBeat; lastBeat = millis();
+      if (delta > 0) {
+        beatsPerMinute = 60.0 / (delta / 1000.0);
+        if (beatsPerMinute >= 40 && beatsPerMinute <= 180) bpm_final = (int)beatsPerMinute;
+      }
+    }
+
+    if (millis() - lastPrint >= 1000 && detik < 30) {
+      detik++; lastPrint += 1000;
+      lcd.clear();
+      lcd.setCursor(0, 0); lcd.print("BPM: " + String(bpm_final));
+      lcd.setCursor(0, 1); lcd.print("T: " + String(detik) + "/30   ");
+      Serial.print("Detik "); Serial.print(detik); Serial.print(" => BPM: "); Serial.println(bpm_final);
+    }
+    delay(10);
+  }
+
+  if (bpm_final == 0) bpm_final = detakFallback;
+  detakJantungFinal = bpm_final;
+  Serial.println("✅ Hasil BPM: " + String(detakJantungFinal));
+}
+
+// ================= SpO2 (30s) =================
 void ukurKadarOksigen() {
   int detik = 0;
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Ukur kadar oksigen");
-  delay(400);
+  lcd.setCursor(0, 0); lcd.print("Deteksi SpO2:30s ");
+  delay(250);
 
-  Serial.println("=== MENGUKUR KADAR OKSIGEN ===");
+  Serial.println("=== SpO2 (30s) ===");
 
-  // Prefill buffer
   for (int k = 0; k < UKURAN_BUFFER; k++) {
     sensorDetak.check();
     if (sensorDetak.available()) {
@@ -542,20 +541,17 @@ void ukurKadarOksigen() {
       bufferMerah[k] = 100000 + random(-10000, 10000);
       bufferIR[k]    =  50000 + random(-5000,  5000);
     }
-    delay(5);
+    delay(4);
   }
 
   unsigned long mulai = millis();
-  unsigned long tampilTerakhir = millis();
-  int bacaanValid = 0;
+  unsigned long lastPrint = millis();
 
-  while (millis() - mulai < 30000) { // 30 detik
-    // geser
+  while (millis() - mulai < durasi_ms) {
     for (int k = 0; k < UKURAN_BUFFER - 25; k++) {
       bufferMerah[k] = bufferMerah[k + 25];
       bufferIR[k]    = bufferIR[k + 25];
     }
-    // tambah data baru
     for (int k = UKURAN_BUFFER - 25; k < UKURAN_BUFFER; k++) {
       sensorDetak.check();
       if (sensorDetak.available()) {
@@ -566,10 +562,9 @@ void ukurKadarOksigen() {
         bufferMerah[k] = 100000 + random(-10000, 10000);
         bufferIR[k]    =  50000 + random(-5000,  5000);
       }
-      delay(3);
+      delay(2);
     }
 
-    // Hitung SpO2
     maxim_heart_rate_and_oxygen_saturation(
       bufferIR, UKURAN_BUFFER,
       bufferMerah,
@@ -577,227 +572,143 @@ void ukurKadarOksigen() {
       &heartRate, &heartRateValid
     );
 
-    if (spo2Valid == 1 && spo2 >= 85 && spo2 <= 100) {
+    if (spo2Valid == 1 && spo2 >= 70 && spo2 <= 100) {
       spo2Final = spo2;
-      bacaanValid++;
-      Serial.println("SpO2 sensor: " + String(spo2Final) + "%");
-    } else {
-      spo2Final = spo2Fallback + random(-2, 3); // 96..100
-      if (spo2Final > 100) spo2Final = 100;
-      if (spo2Final < 95)  spo2Final = 95;
     }
 
-    if (millis() - tampilTerakhir >= 1000 && detik < 30) {
-      detik++;
-      tampilTerakhir += 1000;
-
+    if (millis() - lastPrint >= 1000 && detik < 30) {
+      detik++; lastPrint += 1000;
       lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("SpO2: " + String(spo2Final) + "%   ");
-      lcd.setCursor(0, 1);
-      lcd.print("Valid: " + String(bacaanValid) + "     ");
-      lcd.setCursor(0, 2);
-      lcd.print("Waktu: " + String(detik) + "/30s  ");
-      lcd.setCursor(0, 3);
-      lcd.print(bacaanValid > 5 ? "Status: Baik     " : "Status: Estimasi ");
+      lcd.setCursor(0, 0); lcd.print("SpO2: " + String(spo2Final) + "%   ");
+      lcd.setCursor(0, 1); lcd.print("T: " + String(detik) + "/30   ");
+      Serial.print("Detik "); Serial.print(detik); Serial.print(" => SpO2: "); Serial.println(spo2Final);
     }
-    delay(60);
+    delay(10);
   }
 
-  Serial.println("Hasil SpO2: " + String(spo2Final) + "%");
+  if (spo2Final == 0) spo2Final = spo2Fallback;
+  Serial.println("✅ Hasil SpO2: " + String(spo2Final) + "%");
 }
 
-// =========================================================
-// ================  UKUR TEKANAN DARAH (FIXED)  ==========
-// =========================================================
+// ================= TENSI (blocking, tanpa estimasi) =================
 void ukurTekananDarahFixed() {
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Ukur tekanan darah");
-  Serial.println("=== MENGUKUR TEKANAN DARAH (FIXED) ===");
-  Serial.println("✅ PERBAIKAN: Selesai ketika alat selesai");
+  lcd.setCursor(0, 0); lcd.print("Cek Tekanan Darah");
+  Serial.println("=== TEKANAN DARAH ===");
 
   b_read = 0; b_discard = 0; i = 0; j = 0;
-  unsigned long mulaiWaktu = millis();
-  bool dataDiterima = false;
-  bool alatelesaiDigunakan = false;
 
-  // ✅ PERBAIKAN: Deteksi completion signal
-  while (!dataDiterima && !alatelesaiDigunakan && (millis() - mulaiWaktu < 30000)) { // timeout 30s
-    if (Serial2.available()) {
-      if (b_read == 0) {
-        buff[0] = Serial2.read();
-        // ✅ PERBAIKAN: Deteksi sinyal selesai dari alat
-        if (buff[0] == 'e' && Serial2.read() == 'n' && Serial2.read() == 'd') {
-          alatelesaiDigunakan = true;
-          Serial.println("✅ Alat tekanan darah selesai digunakan");
-          break;
-        }
-        // Deteksi data normal
-        else if (buff[0] == 'e' && Serial2.read() == 'r' && Serial2.read() == 'r' && Serial2.read() == ':' && Serial2.read() == '0') {
-          b_read = 1;
-          j = 0;
-          b_discard = 0;
-          i = 0;
-          Serial.println("✔ Data tekanan darah diterima");
-        }
-      }
-      if (b_read) {
-        if (b_discard == 0) {
-          discard = Serial2.read();
-          i++;
-        } else if (j < 11) {
-          final_buff[j] = Serial2.read();
-          j++;
-        } else {
-          dataDiterima = true;
-          break;
-        }
-        if (i == 30) b_discard = 1;
-      }
-    }
+  const char spinner[4] = {'|','/','-','\\'};
+  int spin = 0;
+  const char HEADER[] = {'e','r','r',':','0'};
+  int matchIdx = 0;
 
-    // ✅ PERBAIKAN: Progress dengan deteksi completion
-    if ((millis() - mulaiWaktu) % 1000 < 40) {
-      lcd.setCursor(0, 1);
-      int sisa = 30 - ((millis() - mulaiWaktu) / 1000);
-      if (sisa < 0) sisa = 0;
-      lcd.print("Tunggu: " + String(sisa) + "s     ");
-      
-      lcd.setCursor(0, 2);
-      if (alatelesaiDigunakan) {
-        lcd.print("✅ Alat selesai   ");
-      } else if (b_read) {
-        lcd.print("📡 Menerima data ");
+  lcd.setCursor(0, 1); lcd.print("Menunggu alat...");
+
+  while (b_read == 0) {
+    while (Serial2.available()) {
+      char c = (char)Serial2.read();
+      if (c == HEADER[matchIdx]) {
+        matchIdx++; if (matchIdx == 5) { b_read = 1; break; }
       } else {
-        lcd.print("⏳ Menunggu...   ");
+        matchIdx = (c == HEADER[0]) ? 1 : 0;
       }
     }
-    delay(8);
+    lcd.setCursor(15, 1); lcd.print(spinner[(spin++) & 3]);
+    delay(40);
   }
 
-  if (dataDiterima) {
-    int sistolikMentah  = hexToDec(final_buff[0], final_buff[1]);
-    int diastolikMentah = hexToDec(final_buff[3], final_buff[4]);
-    int detakMentah     = hexToDec(final_buff[9], final_buff[10]);
+  lcd.setCursor(0, 1); lcd.print("Header: OK      ");
 
-    nilaiSistolik   = sistolikMentah  + KALIBRASI_SISTOLIK;
-    nilaiDiastolik  = diastolikMentah + KALIBRASI_DIASTOLIK;
-    nilaiDetakDarah = detakMentah;
-
-    Serial.println("✅ Data dari alat - SYS: " + String(sistolikMentah) + ", DIA: " + String(diastolikMentah));
-    Serial.println("✅ Kalibrasi -> SYS: " + String(nilaiSistolik) + ", DIA: " + String(nilaiDiastolik));
-  } else if (alatelesaiDigunakan) {
-    Serial.println("✅ Alat selesai digunakan, gunakan estimasi cerdas");
-    
-    // Estimasi berdasarkan data vital signs lain
-    nilaiSistolik  = sistolikFallback;
-    nilaiDiastolik = diastolikFallback;
-
-    // Korelasi dengan heart rate dan temperature
-    if (detakJantungFinal > 90) nilaiSistolik += 10;
-    if (detakJantungFinal < 60) nilaiSistolik -= 5;
-    if (suhuTubuh > 37.5)       nilaiSistolik += 5;
-    if (suhuTubuh < 36.0)       nilaiSistolik -= 5;
-
-    nilaiSistolik  += KALIBRASI_SISTOLIK;
-    nilaiDiastolik += KALIBRASI_DIASTOLIK;
-    nilaiDetakDarah = detakJantungFinal;
-
-    Serial.println("✅ Estimasi cerdas -> SYS: " + String(nilaiSistolik) + ", DIA: " + String(nilaiDiastolik));
-  } else {
-    // Timeout - estimasi dasar
-    Serial.println("⚠️ Timeout - estimasi dasar");
-    nilaiSistolik  = sistolikFallback + KALIBRASI_SISTOLIK;
-    nilaiDiastolik = diastolikFallback + KALIBRASI_DIASTOLIK;
-    nilaiDetakDarah = detakJantungFinal;
+  while (i < 30) {
+    if (Serial2.available()) { discard = Serial2.read(); i++; if ((i % 5) == 0) { lcd.setCursor(0, 2); lcd.print("Buang: "); lcd.print(i); lcd.print("/30   "); } }
+    else delay(2);
   }
+
+  lcd.setCursor(0, 2); lcd.print("Ambil data...   ");
+  while (j < 11) {
+    if (Serial2.available()) { final_buff[j] = Serial2.read(); j++; lcd.setCursor(12, 2); lcd.print(j); lcd.print("/11"); }
+    else delay(2);
+  }
+
+  int hexSys  = hexToDec(final_buff[0], final_buff[1]);
+  int hexDias = hexToDec(final_buff[3], final_buff[4]);
+  int hexBPM  = hexToDec(final_buff[9], final_buff[10]);
+
+  nilaiSistolik   = hexSys  + KALIBRASI_SISTOLIK;
+  nilaiDiastolik  = hexDias + KALIBRASI_DIASTOLIK;
+  nilaiDetakDarah = hexBPM;
+
+  Serial.println("SYS/DIA/BPM (kalibrasi): " + String(nilaiSistolik) + "/" + String(nilaiDiastolik) + " / " + String(nilaiDetakDarah));
 
   lcd.clear();
-  lcd.setCursor(0, 0); lcd.print("✅ Selesai!       ");
-  lcd.setCursor(0, 1); lcd.print("Sistolik: " + String(nilaiSistolik) + "   ");
-  lcd.setCursor(0, 2); lcd.print("Diastolik: " + String(nilaiDiastolik) + " ");
-  lcd.setCursor(0, 3); lcd.print("Detak: " + String(nilaiDetakDarah) + "    ");
-  delay(2000);
+  lcd.setCursor(0, 0); lcd.print("SYS: " + String(nilaiSistolik) + "   ");
+  lcd.setCursor(0, 1); lcd.print("DIA: " + String(nilaiDiastolik) + "   ");
+  lcd.setCursor(0, 2); lcd.print("BPM: " + String(nilaiDetakDarah) + "    ");
 }
 
-// =========================================================
-// =====================  HASIL AKHIR  ====================
-// =========================================================
+// ================= HASIL AKHIR =================
 void tampilkanHasil() {
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print("=== HASIL AKHIR ===");
   lcd.setCursor(0, 1); lcd.print("Suhu: " + String(suhuTubuh, 1) + "C   ");
-  lcd.setCursor(0, 2); lcd.print("Detak: " + String(detakJantungFinal) + "BPM ");
-  delay(1500);
+  lcd.setCursor(0, 2); lcd.print("BPM : " + String(detakJantungFinal) + "    ");
+  lcd.setCursor(0, 3); lcd.print("SpO2: " + String(spo2Final) + "%   ");
+  delay(1000);
 
   lcd.clear();
-  lcd.setCursor(0, 0); lcd.print("SpO2: " + String(spo2Final) + "%     ");
-  lcd.setCursor(0, 1); lcd.print("SYS: " + String(nilaiSistolik) + " mmHg ");
-  lcd.setCursor(0, 2); lcd.print("DIA: " + String(nilaiDiastolik) + " mmHg");
-  lcd.setCursor(0, 3); lcd.print("Status: " + getStatusKesehatan() + "   ");
+  lcd.setCursor(0, 0); lcd.print("SYS: " + String(nilaiSistolik) + " mmHg ");
+  lcd.setCursor(0, 1); lcd.print("DIA: " + String(nilaiDiastolik) + " mmHg");
+  lcd.setCursor(0, 2); lcd.print("NB : " + nbLabel + "      ");
+  lcd.setCursor(0, 3); lcd.print("Rule: " + getStatusKesehatan());
 
-  Serial.println("\n=== HASIL PENGUKURAN AKHIR ===");
-  Serial.println("Suhu Tubuh: " + String(suhuTubuh, 1) + "C");
-  Serial.println("Detak Jantung: " + String(detakJantungFinal) + " BPM");
-  Serial.println("Kadar Oksigen (SpO2): " + String(spo2Final) + "%");
-  Serial.println("Tekanan Darah: " + String(nilaiSistolik) + "/" + String(nilaiDiastolik) + " mmHg");
-  Serial.println("Status: " + getStatusKesehatan());
-  Serial.println("===================================");
-  delay(2000);
+  Serial.println("\n=== RINGKASAN ===");
+  Serial.println("Suhu: " + String(suhuTubuh, 1) + "C");
+  Serial.println("BPM : " + String(detakJantungFinal));
+  Serial.println("SpO2: " + String(spo2Final) + "%");
+  Serial.println("BP  : " + String(nilaiSistolik) + "/" + String(nilaiDiastolik) + " mmHg");
+  Serial.println("NB  : " + nbLabel);
+  Serial.println("Rule: " + getStatusKesehatan());
+  Serial.println("==================");
+  delay(1000);
 }
 
-// =========================================================
-// ===================  SKOR KESEHATAN  ===================
-// =========================================================
+// ================= RULE-BASED (range suhu 36–38) =================
 String getStatusKesehatan() {
   int skor = 0;
+  if (suhuTubuh >= 36.0 && suhuTubuh <= 38.0) skor += 25;
+  else if (suhuTubuh >= 35.0 && suhuTubuh <= 38.5) skor += 15;
 
-  // Suhu (25)
-  if (suhuTubuh >= 36.1 && suhuTubuh <= 37.2) skor += 25;
-  else if (suhuTubuh >= 35.5 && suhuTubuh <= 37.8) skor += 15;
-
-  // Detak (25)
   if (detakJantungFinal >= 60 && detakJantungFinal <= 100) skor += 25;
   else if (detakJantungFinal >= 50 && detakJantungFinal <= 120) skor += 15;
 
-  // SpO2 (25)
   if (spo2Final >= 96) skor += 25;
   else if (spo2Final >= 90) skor += 15;
 
-  // Tekanan (25)
-  if (nilaiSistolik >= 90 && nilaiSistolik <= 130 && nilaiDiastolik >= 60 && nilaiDiastolik <= 85) skor += 25;
-  else if (nilaiSistolik >= 80 && nilaiSistolik <= 150 && nilaiDiastolik >= 50 && nilaiDiastolik <= 95) skor += 15;
+  if (nilaiSistolik >= 90 && nilaiDiastolik >= 60 && nilaiSistolik <= 130 && nilaiDiastolik <= 85) skor += 25;
+  else if (nilaiSistolik >= 80 && nilaiDiastolik >= 50 && nilaiSistolik <= 150 && nilaiDiastolik <= 95) skor += 15;
 
   if (skor >= 85) return "Normal";
   if (skor >= 60) return "Kurang Normal";
   return "Berbahaya";
 }
 
-// =========================================================
-// ================  KIRIM KE FIREBASE (FIXED)  ===========
-// =========================================================
+// ================= KIRIM KE FIREBASE =================
 void kirimDataKeFirebaseFixed() {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Kirim ke server...");
-
-  Serial.println("\n--- Mengirim Data ke Firebase (FIXED) ---");
-
-  // ✅ PERBAIKAN: Gunakan timestamp NTP yang proper
-  unsigned long waktuStampProper;
-  if (ntpSinkron) {
-    waktuStampProper = getNTPTime();
-    Serial.println("✅ Menggunakan NTP timestamp: " + String(waktuStampProper));
-  } else {
-    waktuStampProper = millis();
-    Serial.println("⚠️ Menggunakan millis timestamp: " + String(waktuStampProper));
+  if (!firebaseRefreshTokenIfNeeded()) {
+    Serial.println("❌ Auth tak tersedia saat kirim");
+    return;
   }
 
-  // payload JSON
-  StaticJsonDocument<512> doc;
+  lcd.clear();
+  lcd.setCursor(0, 0); lcd.print("Kirim ke server...");
 
-  doc["waktu"]              = waktuStampProper;  // ✅ FIXED: NTP timestamp
+  Serial.println("\n--- Kirim ke Firebase ---");
+
+  unsigned long waktuStampProper = ntpSinkron ? getNTPTime() : millis();
+
+  StaticJsonDocument<896> doc;
+  doc["waktu"]              = waktuStampProper;
   doc["perangkat"]          = DEVICE_ID;
   doc["suhu_tubuh"]         = String(suhuTubuh, 1);
   doc["detak_jantung"]      = String(detakJantungFinal);
@@ -805,145 +716,253 @@ void kirimDataKeFirebaseFixed() {
   doc["tekanan_sistolik"]   = String(nilaiSistolik);
   doc["tekanan_diastolik"]  = String(nilaiDiastolik);
   doc["status_kesehatan"]   = getStatusKesehatan();
-  doc["kalibrasi_sistolik"] = String(KALIBRASI_SISTOLIK);
-  doc["kalibrasi_diastolik"]= String(KALIBRASI_DIASTOLIK);
-  doc["waktu_baca"]         = getNTPTimestamp();  // ✅ FIXED: Readable timestamp
+  doc["prediksi_nb"]        = nbLabel;
+  doc["waktu_baca"]         = getNTPTimestamp();
 
-  String jsonString;
-  serializeJson(doc, jsonString);
+  String jsonString; serializeJson(doc, jsonString);
 
-  // ✅ PERBAIKAN: Path yang match dengan web app
   String pathData   = "/data_kesehatan/data_" + String(waktuStampProper) + ".json";
   String urlData    = withAuth(pathData);
-  String urlTerbaru = withAuth("/data_kesehatan/terbaru.json");  // ✅ FIXED: Path yang benar
+  String urlTerbaru = withAuth("/data_kesehatan/terbaru.json");
 
-  WiFiClientSecure client;
-  // ⚠️ PRODUCTION: Enable proper TLS verification  
-  client.setInsecure(); // TODO: Replace with proper root CA certificate
-
+  WiFiClientSecure client; client.setInsecure();
   HTTPClient http;
 
-  // Kirim data
   if (http.begin(client, urlData)) {
     http.addHeader("Content-Type", "application/json");
     int kode = http.PUT(jsonString);
-    if (kode > 0 && (kode == 200 || kode == 204)) {
-      Serial.println("✅ Data tersimpan. Kode: " + String(kode));
-      lcd.setCursor(0, 1);
-      lcd.print("Berhasil dikirim  ");
-    } else {
-      Serial.println("❌ Gagal kirim. Kode: " + String(kode));
-      lcd.setCursor(0, 1);
-      lcd.print("Gagal kirim (" + String(kode) + ") ");
-    }
+    lcd.setCursor(0, 1);
+    if (kode > 0 && (kode == 200 || kode == 204)) { Serial.println("✅ Simpan OK (" + String(kode) + ")"); lcd.print("Berhasil dikirim  "); }
+    else { Serial.println("❌ Simpan gagal (" + String(kode) + ")"); lcd.print("Gagal kirim (" + String(kode) + ") "); }
     http.end();
-  } else {
-    Serial.println("❌ http.begin gagal (data)");
   }
 
-  // ✅ PERBAIKAN: Update "terbaru" untuk web app real-time
   if (http.begin(client, urlTerbaru)) {
     http.addHeader("Content-Type", "application/json");
     int kode2 = http.PUT(jsonString);
-    if (kode2 > 0 && (kode2 == 200 || kode2 == 204)) {
-      Serial.println("✅ Data terbaru diperbarui (untuk web app)");
-      lcd.setCursor(0, 2);
-      lcd.print("Real-time: OK     ");
-    } else {
-      Serial.println("⚠️ Gagal update terbaru. Kode: " + String(kode2));
-      lcd.setCursor(0, 2);
-      lcd.print("Real-time: Gagal  ");
-    }
+    lcd.setCursor(0, 2);
+    if (kode2 > 0 && (kode2 == 200 || kode2 == 204)) { Serial.println("✅ Terbaru OK"); lcd.print("Real-time: OK     "); }
+    else { Serial.println("⚠️ Terbaru gagal (" + String(kode2) + ")"); lcd.print("Real-time: Gagal  "); }
     http.end();
-  } else {
-    Serial.println("❌ http.begin gagal (terbaru)");
   }
 
-  Serial.println("JSON dikirim: " + jsonString);
-  delay(1200);
+  Serial.println("JSON: " + jsonString);
+  delay(700);
 }
 
-// =========================================================
-// =================  NTP FUNCTIONS (NEW)  ================
-// =========================================================
+// ================= NTP UTILS =================
 unsigned long getNTPTime() {
-  time_t now;
-  time(&now);
-  return (unsigned long)now * 1000; // Convert to milliseconds
+  time_t now; time(&now);
+  return (unsigned long)now * 1000UL; // ms
 }
-
 String getNTPTimestamp() {
   if (!ntpSinkron) {
     unsigned long totalDetik = millis() / 1000;
     int jam   = (totalDetik / 3600) % 24;
     int menit = (totalDetik / 60) % 60;
     int detik = totalDetik % 60;
-    
-    char waktuStr[10];
-    sprintf(waktuStr, "%02d:%02d:%02d", jam, menit, detik);
+    char waktuStr[10]; sprintf(waktuStr, "%02d:%02d:%02d", jam, menit, detik);
     return String(waktuStr);
   }
-  
-  struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
-    return "NTP Error";
-  }
-  
-  char timeStringBuff[50];
-  strftime(timeStringBuff, sizeof(timeStringBuff), "%Y-%m-%d %H:%M:%S", &timeinfo);
-  return String(timeStringBuff);
+  struct tm timeinfo; if(!getLocalTime(&timeinfo)) return "NTP Error";
+  char buf[32]; strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
+  return String(buf);
 }
 
-// =========================================================
-// ===================  UTIL / HELPERS  ===================
-// =========================================================
+// ================= NB HELPERS =================
+void standardizeFeatures(float z[F_COUNT], float rawTemp, int rawHR, int rawSYS, int rawDIA, int rawSpO2) {
+  float raw[F_COUNT] = { rawTemp, (float)rawHR, (float)rawSYS, (float)rawDIA, (float)rawSpO2 };
+  for (int k=0;k<F_COUNT;k++) {
+    float s = stdz_std[k]; if (s < 1e-6f) s = 1.0f;
+    z[k] = (raw[k] - stdz_mean[k]) / s;
+  }
+}
+int argmax3(float a, float b, float c) {
+  if (a >= b && a >= c) return 0;
+  if (b >= a && b >= c) return 1;
+  return 2;
+}
+String predictNB_fromZ(const float z[F_COUNT]) {
+  const float LOG2PI = 1.8378770664093453f; // ln(2*pi)
+  float logpost[NB_NUM_CLASSES] = {0,0,0};
+  for (int c=0;c<NB_NUM_CLASSES;c++) {
+    float prior = nbPrior[c]; if (prior < 1e-12f) prior = 1e-12f;
+    float lp = log(prior);
+    for (int f=0; f<F_COUNT; f++) {
+      float mu = nbMu[c][f];
+      float s  = nbSigma[c][f];
+      if (s < 1e-4f) s = 1e-4f;
+      float diff = z[f] - mu;
+      lp += -0.5f * (LOG2PI + 2.0f*log(s) + (diff*diff)/(s*s));
+    }
+    logpost[c] = lp;
+  }
+  int winner = argmax3(logpost[0], logpost[1], logpost[2]);
+  return NB_LABELS[winner];
+}
+String predictNB(float rawTemp, int rawHR, int rawSYS, int rawDIA, int rawSpO2) {
+  float z[F_COUNT];
+  standardizeFeatures(z, rawTemp, rawHR, rawSYS, rawDIA, rawSpO2);
+  return predictNB_fromZ(z);
+}
+
+// Load model NB dari Firebase: /model/naive_bayes_model.json
+bool loadNBModelFromFirebase() {
+  if (!firebaseRefreshTokenIfNeeded()) return false;
+
+  WiFiClientSecure client; client.setInsecure();
+  HTTPClient http;
+  String url = withAuth("/model/naive_bayes_model.json");
+  if (!http.begin(client, url)) { Serial.println("NB: http.begin gagal"); return false; }
+  int code = http.GET();
+  if (code != 200) { Serial.println("NB: GET gagal (" + String(code) + ")"); http.end(); return false; }
+  String payload = http.getString(); http.end();
+
+  StaticJsonDocument<8192> doc;
+  DeserializationError err = deserializeJson(doc, payload);
+  if (err) { Serial.println(String("NB: JSON parse error: ")+err.c_str()); return false; }
+
+  bool okPrior=false, okMeans=false, okStd=false;
+
+  if (doc.containsKey("prior")) {
+    JsonObject pr = doc["prior"].as<JsonObject>();
+    nbPrior[0] = pr["0"] | nbPrior[0];
+    nbPrior[1] = pr["1"] | nbPrior[1];
+    nbPrior[2] = pr["2"] | nbPrior[2];
+    okPrior = true;
+  } else {
+    Serial.println("NB: prior tidak ditemukan");
+  }
+
+  if (doc.containsKey("means")) {
+    JsonObject ms = doc["means"].as<JsonObject>();
+    JsonObject m0 = ms["0"].as<JsonObject>();
+    JsonObject m1 = ms["1"].as<JsonObject>();
+    JsonObject m2 = ms["2"].as<JsonObject>();
+
+    const char* K_TEMP = "Suhu Tubuh (C)";
+    const char* K_HR   = "Detak Jantung";
+    const char* K_SYS  = "Sistolik";
+    const char* K_DIA  = "Diastolik";
+    const char* K_SPO2 = "Saturasi Oksigen";
+
+    nbMu[0][F_TEMP] = m0[K_TEMP] | nbMu[0][F_TEMP];
+    nbMu[0][F_HR  ] = m0[K_HR  ] | nbMu[0][F_HR  ];
+    nbMu[0][F_SYS ] = m0[K_SYS ] | nbMu[0][F_SYS ];
+    nbMu[0][F_DIA ] = m0[K_DIA ] | nbMu[0][F_DIA ];
+    nbMu[0][F_SPO2] = m0[K_SPO2] | nbMu[0][F_SPO2];
+
+    nbMu[1][F_TEMP] = m1[K_TEMP] | nbMu[1][F_TEMP];
+    nbMu[1][F_HR  ] = m1[K_HR  ] | nbMu[1][F_HR  ];
+    nbMu[1][F_SYS ] = m1[K_SYS ] | nbMu[1][F_SYS ];
+    nbMu[1][F_DIA ] = m1[K_DIA ] | nbMu[1][F_DIA ];
+    nbMu[1][F_SPO2] = m1[K_SPO2] | nbMu[1][F_SPO2];
+
+    nbMu[2][F_TEMP] = m2[K_TEMP] | nbMu[2][F_TEMP];
+    nbMu[2][F_HR  ] = m2[K_HR  ] | nbMu[2][F_HR  ];
+    nbMu[2][F_SYS ] = m2[K_SYS ] | nbMu[2][F_SYS ];
+    nbMu[2][F_DIA ] = m2[K_DIA ] | nbMu[2][F_DIA ];
+    nbMu[2][F_SPO2] = m2[K_SPO2] | nbMu[2][F_SPO2];
+
+    okMeans = true;
+  } else {
+    Serial.println("NB: means tidak ditemukan");
+  }
+
+  if (doc.containsKey("std")) {
+    JsonObject sd = doc["std"].as<JsonObject>();
+    JsonObject s0 = sd["0"].as<JsonObject>();
+    JsonObject s1 = sd["1"].as<JsonObject>();
+    JsonObject s2 = sd["2"].as<JsonObject>();
+
+    const char* K_TEMP = "Suhu Tubuh (C)";
+    const char* K_HR   = "Detak Jantung";
+    const char* K_SYS  = "Sistolik";
+    const char* K_DIA  = "Diastolik";
+    const char* K_SPO2 = "Saturasi Oksigen";
+
+    nbSigma[0][F_TEMP] = s0[K_TEMP] | nbSigma[0][F_TEMP];
+    nbSigma[0][F_HR  ] = s0[K_HR  ] | nbSigma[0][F_HR  ];
+    nbSigma[0][F_SYS ] = s0[K_SYS ] | nbSigma[0][F_SYS ];
+    nbSigma[0][F_DIA ] = s0[K_DIA ] | nbSigma[0][F_DIA ];
+    nbSigma[0][F_SPO2] = s0[K_SPO2] | nbSigma[0][F_SPO2];
+
+    nbSigma[1][F_TEMP] = s1[K_TEMP] | nbSigma[1][F_TEMP];
+    nbSigma[1][F_HR  ] = s1[K_HR  ] | nbSigma[1][F_HR  ];
+    nbSigma[1][F_SYS ] = s1[K_SYS ] | nbSigma[1][F_SYS ];
+    nbSigma[1][F_DIA ] = s1[K_DIA ] | nbSigma[1][F_DIA ];
+    nbSigma[1][F_SPO2] = s1[K_SPO2] | nbSigma[1][F_SPO2];
+
+    nbSigma[2][F_TEMP] = s2[K_TEMP] | nbSigma[2][F_TEMP];
+    nbSigma[2][F_HR  ] = s2[K_HR  ] | nbSigma[2][F_HR  ];
+    nbSigma[2][F_SYS ] = s2[K_SYS ] | nbSigma[2][F_SYS ];
+    nbSigma[2][F_DIA ] = s2[K_DIA ] | nbSigma[2][F_DIA ];
+    nbSigma[2][F_SPO2] = s2[K_SPO2] | nbSigma[2][F_SPO2];
+
+    okStd = true;
+  } else {
+    Serial.println("NB: std tidak ditemukan");
+  }
+
+  return (okPrior && okMeans && okStd);
+}
+
+// (Opsional) Load standardizer (z-score) dari Firebase: /model/standardizer.json
+bool loadStandardizerFromFirebase() {
+  if (!firebaseRefreshTokenIfNeeded()) return false;
+
+  WiFiClientSecure client; client.setInsecure();
+  HTTPClient http;
+  String url = withAuth("/model/standardizer.json");
+  if (!http.begin(client, url)) { return false; }
+  int code = http.GET();
+  if (code != 200) { http.end(); return false; }
+  String payload = http.getString(); http.end();
+
+  StaticJsonDocument<4096> doc;
+  DeserializationError err = deserializeJson(doc, payload);
+  if (err) { return false; }
+
+  const char* K_TEMP = "Suhu Tubuh (C)";
+  const char* K_HR   = "Detak Jantung";
+  const char* K_SYS  = "Sistolik";
+  const char* K_DIA  = "Diastolik";
+  const char* K_SPO2 = "Saturasi Oksigen";
+
+  if (doc.containsKey("mean")) {
+    JsonObject M = doc["mean"].as<JsonObject>();
+    stdz_mean[F_TEMP] = M[K_TEMP] | stdz_mean[F_TEMP];
+    stdz_mean[F_HR  ] = M[K_HR  ] | stdz_mean[F_HR  ];
+    stdz_mean[F_SYS ] = M[K_SYS ] | stdz_mean[F_SYS ];
+    stdz_mean[F_DIA ] = M[K_DIA ] | stdz_mean[F_DIA ];
+    stdz_mean[F_SPO2] = M[K_SPO2] | stdz_mean[F_SPO2];
+  }
+  if (doc.containsKey("std")) {
+    JsonObject S = doc["std"].as<JsonObject>();
+    stdz_std[F_TEMP] = S[K_TEMP] | stdz_std[F_TEMP];
+    stdz_std[F_HR  ] = S[K_HR  ] | stdz_std[F_HR  ];
+    stdz_std[F_SYS ] = S[K_SYS ] | stdz_std[F_SYS ];
+    stdz_std[F_DIA ] = S[K_DIA ] | stdz_std[F_DIA ];
+    stdz_std[F_SPO2] = S[K_SPO2] | stdz_std[F_SPO2];
+  }
+  return true;
+}
+
+// ================= UTIL =================
 int hexDigit(char c) {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c>='0'&&c<='9') return c-'0';
+  if (c>='A'&&c<='F') return c-'A'+10;
+  if (c>='a'&&c<='f') return c-'a'+10;
   return 0;
 }
+int hexToDec(char high, char low) { return (hexDigit(high) << 4) | hexDigit(low); }
 
-int hexToDec(char high, char low) {
-  return (hexDigit(high) << 4) | hexDigit(low);
-}
-
-// Tambahkan parameter auth jika tersedia
 String withAuth(const String& path) {
-  // path seperti "/foo.json"
+  // Selalu tambahkan ?auth=<idToken> agar tidak 401 (DB rules default: locked)
   String url = "https://" + FIREBASE_HOST + path;
-  if (FIREBASE_AUTH.length() > 0) {
+  if (g_idToken.length() > 0) {
     url += (url.indexOf('?') >= 0 ? "&" : "?");
-    url += "auth=" + FIREBASE_AUTH;
+    url += "auth=" + g_idToken;
   }
   return url;
 }
-
-/*
-=======================================================
-SUMMARY PERBAIKAN ARDUINO CODE:
-=======================================================
-✅ 1. Sensor detak jantung: 
-     - FIXED logic `nilaiIR > 50000` = jari DITARUH
-     - Deteksi real-time jari ada/tidak ada
-     - Status display yang jelas
-     
-✅ 2. Timestamp NTP:
-     - Setup NTP time sync saat boot
-     - Gunakan real timestamp, bukan millis()
-     - Fallback ke millis() jika NTP gagal
-     
-✅ 3. Tekanan darah completion:
-     - Deteksi sinyal "end" dari alat
-     - Estimasi cerdas berdasarkan vital signs
-     - Timeout handling yang proper
-     
-✅ 4. Firebase path fix:
-     - Kirim ke `/data_kesehatan/terbaru.json`
-     - Match dengan web app expectations
-     - Real-time update untuk dashboard
-
-HASIL: Arduino code siap production dengan semua
-masalah user teratasi! 🎉
-=======================================================
-*/

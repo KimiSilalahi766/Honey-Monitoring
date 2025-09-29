@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Perbandingan Hasil Klasifikasi: Arduino vs Model Web</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f8f9fa;
+      margin: 0;
+      padding: 30px;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .chart-container {
+      width: 600px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      padding: 30px 40px 40px 40px;
+    }
+    .bar-group {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 30px;
+      height: 250px;
+      position: relative;
+    }
+    .bar-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+    .bar {
+      width: 60px;
+      margin: 0 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .bar-arduino, .bar-web {
+      width: 24px;
+      border-radius: 5px 5px 0 0;
+      margin-bottom: 4px;
+      transition: height 0.5s;
+    }
+    .bar-arduino {
+      background: #007bff;
+    }
+    .bar-web {
+      background: #28a745;
+    }
+    .bar-value {
+      font-size: 13px;
+      margin-bottom: 3px;
+      color: #333;
+    }
+    .legend {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      margin-top: 20px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+    }
+    .legend-color {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .arduino-color {
+      background: #007bff;
+    }
+    .web-color {
+      background: #28a745;
+    }
+    @media (max-width: 700px) {
+      .chart-container { width: 98vw; padding: 10px; }
+      .bar { margin: 0 8px; }
+    }
+  </style>
+</head>
+<body>
+  <h2>Gambar 4.4 Perbandingan Hasil Klasifikasi: Arduino vs Model Web</h2>
+  <div class="chart-container">
+    <div class="bar-group">
+      <!-- Akurasi -->
+      <div class="bar">
+        <div class="bar-value">95%</div>
+        <div class="bar-arduino" style="height: 190px;" title="Arduino: 95%"></div>
+        <div class="bar-web" style="height: 180px;" title="Web: 90%"></div>
+      </div>
+      <!-- Presisi -->
+      <div class="bar">
+        <div class="bar-value">92%</div>
+        <div class="bar-arduino" style="height: 184px;" title="Arduino: 92%"></div>
+        <div class="bar-web" style="height: 175px;" title="Web: 87.5%"></div>
+      </div>
+      <!-- Recall -->
+      <div class="bar">
+        <div class="bar-value">90%</div>
+        <div class="bar-arduino" style="height: 180px;" title="Arduino: 90%"></div>
+        <div class="bar-web" style="height: 170px;" title="Web: 85%"></div>
+      </div>
+    </div>
+    <div class="bar-labels">
+      <div style="width: 100px; text-align: center;">Akurasi</div>
+      <div style="width: 100px; text-align: center;">Presisi</div>
+      <div style="width: 100px; text-align: center;">Recall</div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><span class="legend-color arduino-color"></span> Arduino</div>
+      <div class="legend-item"><span class="legend-color web-color"></span> Model Web</div>
+    </div>
+  </div>
+</body>
+</html>
