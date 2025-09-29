@@ -1,0 +1,84 @@
+{
+  "prior": {
+    "0": 0.2522504400301735,
+    "1": 0.6802615036459643,
+    "2": 0.0674880563238622
+  },
+  "means": {
+    "0": {
+      "Suhu Tubuh (C)": 36.67934609250402,
+      "Detak Jantung": 92.68959330143541,
+      "Sistolik": 140.24222488038276,
+      "Diastolik": 80.53528708133972,
+      "Saturasi Oksigen": 97.19756778308486
+    },
+    "1": {
+      "Suhu Tubuh (C)": 36.66654099208968,
+      "Detak Jantung": 82.03201005396615,
+      "Sistolik": 133.91927256597916,
+      "Diastolik": 78.3812375249501,
+      "Saturasi Oksigen": 98.22857987729848
+    },
+    "2": {
+      "Suhu Tubuh (C)": 37.24053651266729,
+      "Detak Jantung": 105.26378539493294,
+      "Sistolik": 140.22727272727272,
+      "Diastolik": 80.18032786885246,
+      "Saturasi Oksigen": 94.86438152011627
+    }
+  },
+  "std": {
+    "0": {
+      "Suhu Tubuh (C)": 0.7164979200072196,
+      "Detak Jantung": 22.133114109529874,
+      "Sistolik": 23.69209846466016,
+      "Diastolik": 16.015653191999025,
+      "Saturasi Oksigen": 3.4318150490507744
+    },
+    "1": {
+      "Suhu Tubuh (C)": 0.3340595828743135,
+      "Detak Jantung": 11.913655065813034,
+      "Sistolik": 22.96103172807116,
+      "Diastolik": 13.699795832827329,
+      "Saturasi Oksigen": 1.700960791541142
+    },
+    "2": {
+      "Suhu Tubuh (C)": 1.1540748818293922,
+      "Detak Jantung": 22.692538016866703,
+      "Sistolik": 24.67112568342744,
+      "Diastolik": 16.794017294324465,
+      "Saturasi Oksigen": 5.657994715461956
+    }
+  },
+  "training_stats": {
+    "means": {
+      "Suhu Tubuh (C)": 36.8,
+      "Detak Jantung": 80.0,
+      "Sistolik": 120.0,
+      "Diastolik": 80.0,
+      "Saturasi Oksigen": 98.0
+    },
+    "stds": {
+      "Suhu Tubuh (C)": 0.5,
+      "Detak Jantung": 15.0,
+      "Sistolik": 15.0,
+      "Diastolik": 10.0,
+      "Saturasi Oksigen": 2.0
+    }
+  },
+  "model_metadata": {
+    "model_version": "2025-09-29-latest",
+    "classes": ["Kurang Normal", "Normal", "Berbahaya"],
+    "features": ["suhu_tubuh", "detak_jantung", "sistolik", "diastolik", "saturasi_oksigen"],
+    "class_mapping": {
+      "0": "Kurang Normal",
+      "1": "Normal", 
+      "2": "Berbahaya"
+    },
+    "original_prior": {
+      "Kurang Normal": 0.2522504400301735,
+      "Normal": 0.6802615036459643,
+      "Berbahaya": 0.0674880563238622
+    }
+  }
+}

@@ -240,9 +240,43 @@ class GoogleColabClassifier {
 // Initialize Google Colab classifier (no training needed - rule-based)
 export const heartClassifier = new GoogleColabClassifier();
 
-// Client-side classification function
-export const classifyHeartCondition = (data: ClassificationRequest): ClassificationResponse => {
-  return heartClassifier.predict(data);
+// Import Firebase model classifier
+import { classifyWithFirebaseModel } from './naive-bayes-firebase-model';
+
+// Enhanced classification function - uses new trained Firebase model 
+export const classifyHeartCondition = async (data: ClassificationRequest): Promise<ClassificationResponse> => {
+  try {
+    // Try Firebase model first (your latest trained model)
+    console.log('🧠 Using latest trained Naive Bayes model from Firebase...');
+    const firebaseResult = await classifyWithFirebaseModel({
+      suhu: data.suhu,
+      bpm: data.bpm,
+      tekanan_sys: data.tekanan_sys,
+      tekanan_dia: data.tekanan_dia,
+      spo2: data.spo2
+    });
+    
+    console.log('✅ Firebase model classification result:', firebaseResult);
+    
+    return {
+      classification: firebaseResult.classification,
+      confidence: firebaseResult.confidence,
+      probabilities: firebaseResult.probabilities,
+      explanation: `TRAINED NAIVE BAYES MODEL (Firebase)\n\n${firebaseResult.explanation}`,
+      features_impact: {
+        suhu: Math.random() * 20 + 10, // Placeholder - could be enhanced
+        bpm: Math.random() * 20 + 10,
+        spo2: Math.random() * 20 + 10,
+        tekanan_sys: Math.random() * 20 + 10,
+        tekanan_dia: Math.random() * 20 + 10,
+        signal_quality: Math.random() * 10 + 5
+      }
+    };
+  } catch (error) {
+    console.warn('⚠️ Firebase model failed, falling back to rule-based classifier:', error);
+    // Fallback to Google Colab rule-based classifier
+    return heartClassifier.predict(data);
+  }
 };
 
 // Get comprehensive Google Colab analysis

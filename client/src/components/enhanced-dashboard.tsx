@@ -34,29 +34,36 @@ export function EnhancedDashboard({ className }: EnhancedDashboardProps) {
   
   useEffect(() => {
     if (currentData) {
-      try {
-        const classification = classifyHeartCondition({
-          suhu: currentData.suhu,
-          bpm: currentData.bpm,
-          spo2: currentData.spo2,
-          tekanan_sys: currentData.tekanan_sys,
-          tekanan_dia: currentData.tekanan_dia,
-          signal_quality: currentData.signal_quality
-        });
-        
-        const featureImportance = calculateFeatureImportance({
-          suhu: currentData.suhu,
-          bpm: currentData.bpm,
-          spo2: currentData.spo2,
-          tekanan_sys: currentData.tekanan_sys,
-          tekanan_dia: currentData.tekanan_dia,
-          signal_quality: currentData.signal_quality
-        });
-        
-        setEnhancedAnalysis({ classification, featureImportance });
-      } catch (error) {
-        console.error('Analysis error:', error);
-      }
+      const performAnalysis = async () => {
+        try {
+          console.log('🔬 Performing enhanced analysis with new trained model...');
+          
+          const classification = await classifyHeartCondition({
+            suhu: currentData.suhu,
+            bpm: currentData.bpm,
+            spo2: currentData.spo2,
+            tekanan_sys: currentData.tekanan_sys,
+            tekanan_dia: currentData.tekanan_dia,
+            signal_quality: currentData.signal_quality
+          });
+          
+          const featureImportance = calculateFeatureImportance({
+            suhu: currentData.suhu,
+            bpm: currentData.bpm,
+            spo2: currentData.spo2,
+            tekanan_sys: currentData.tekanan_sys,
+            tekanan_dia: currentData.tekanan_dia,
+            signal_quality: currentData.signal_quality
+          });
+          
+          console.log('📊 Analysis completed:', { classification, featureImportance });
+          setEnhancedAnalysis({ classification, featureImportance });
+        } catch (error) {
+          console.error('❌ Analysis error:', error);
+        }
+      };
+      
+      performAnalysis();
     }
   }, [currentData]);
 

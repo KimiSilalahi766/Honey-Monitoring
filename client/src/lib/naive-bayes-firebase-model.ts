@@ -54,8 +54,8 @@ export interface ClassificationResult {
   explanation: string;
 }
 
-// ✅ FIREBASE MODEL URL - SESUAI YANG USER GUNAKAN DI ARDUINO
-const FIREBASE_MODEL_URL = "https://monitoring-jantung-f8031-default-rtdb.firebaseio.com/model/naive_bayes_model.json";
+// ✅ FIREBASE MODEL URL - SESUAI YANG USER GUNAKAN DI ARDUINO ESP32
+const FIREBASE_MODEL_URL = "https://heart-monitoring-20872-default-rtdb.asia-southeast1.firebasedatabase.app/model/naive_bayes_model.json";
 
 // ✅ MEDICAL BASELINE STATISTICS FOR STANDARDIZATION
 // Jika tidak ada di Firebase, gunakan estimates berdasarkan pengetahuan medis
