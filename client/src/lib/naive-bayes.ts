@@ -1,4 +1,5 @@
 import type { ClassificationRequest, ClassificationResponse } from '@shared/schema';
+import { classifyWithFirebaseModel } from './naive-bayes-firebase-model';
 
 // ========================================
 // GOOGLE COLAB DATASET INTEGRATION
@@ -239,9 +240,6 @@ class GoogleColabClassifier {
 
 // Initialize Google Colab classifier (no training needed - rule-based)
 export const heartClassifier = new GoogleColabClassifier();
-
-// Import Firebase model classifier
-import { classifyWithFirebaseModel } from './naive-bayes-firebase-model';
 
 // Enhanced classification function - uses new trained Firebase model 
 export const classifyHeartCondition = async (data: ClassificationRequest): Promise<ClassificationResponse> => {
