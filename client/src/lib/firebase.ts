@@ -69,15 +69,22 @@ const transformArduinoData = (arduinoData: ArduinoData, id: string = 'latest'): 
     console.log(`🤖 Arduino Hardware Classification: ${arduinoData.status_kesehatan}`);
   }
   
+  // Parse sensor values - gunakan 0 jika sensor tidak mendeteksi
+  const suhu = parseFloat(arduinoData.suhu_tubuh);
+  const bpm = parseInt(arduinoData.detak_jantung);
+  const spo2 = parseInt(arduinoData.kadar_oksigen);
+  const tekanan_sys = parseInt(arduinoData.tekanan_sistolik);
+  const tekanan_dia = parseInt(arduinoData.tekanan_diastolik);
+  
   const transformedData = {
     id,
     timestamp,
-    suhu: parseFloat(arduinoData.suhu_tubuh) || 36.5,
-    bpm: parseInt(arduinoData.detak_jantung) || 75,
-    spo2: parseInt(arduinoData.kadar_oksigen) || 98,
-    tekanan_sys: parseInt(arduinoData.tekanan_sistolik) || 120,
-    tekanan_dia: parseInt(arduinoData.tekanan_diastolik) || 80,
-    signal_quality: 85, // Default quality since Arduino doesn't send this
+    suhu: isNaN(suhu) ? 0 : suhu,
+    bpm: isNaN(bpm) ? 0 : bpm,
+    spo2: isNaN(spo2) ? 0 : spo2,
+    tekanan_sys: isNaN(tekanan_sys) ? 0 : tekanan_sys,
+    tekanan_dia: isNaN(tekanan_dia) ? 0 : tekanan_dia,
+    signal_quality: (bpm > 0 && spo2 > 0) ? 85 : 0, // Quality based on sensor detection
     // Use Arduino classification directly
     kondisi: arduinoData.status_kesehatan || 'Normal'
   };

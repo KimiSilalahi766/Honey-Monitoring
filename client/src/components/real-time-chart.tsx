@@ -181,9 +181,28 @@ export function RealTimeChart({ data, currentData, className }: RealTimeChartPro
             },
             y2: {
               type: 'linear',
-              display: false,
-              min: 35,
-              max: 40
+              display: true,
+              position: 'right',
+              min: 25,
+              max: 45,
+              ticks: { 
+                color: 'rgb(156, 163, 175)',
+                font: {
+                  family: 'JetBrains Mono, monospace',
+                  size: 10
+                }
+              },
+              grid: { drawOnChartArea: false },
+              title: {
+                display: true,
+                text: 'Temp (°C)',
+                color: 'rgb(239, 68, 68)',
+                font: {
+                  family: 'Inter, sans-serif',
+                  size: 11,
+                  weight: 'bold'
+                }
+              }
             }
           },
           elements: {
